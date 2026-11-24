@@ -1,0 +1,184 @@
+export type BallLevel = 'blanc' | 'violet' | 'rouge' | 'orange' | 'vert';
+
+export type ChildTheme = 'terre-battue' | 'galaxie' | 'gazon';
+
+export type AppMode = 'child' | 'parent';
+
+export type SkillKey =
+  | 'coup_droit'
+  | 'revers'
+  | 'service'
+  | 'volee'
+  | 'deplacements'
+  | 'mental';
+
+export type SessionType = 'cours_club' | 'jeu_famille' | 'stage' | 'plateau';
+
+export type ChildMood = 'adore' | 'fiere' | 'rigolo' | 'fatiguee' | 'difficile';
+
+export interface AvatarConfig {
+  skinColor: string;
+  hairStyle: 'ponytail' | 'bob' | 'braids' | 'bun';
+  hairColor: string;
+  outfitColor: string;
+  headband: 'none' | 'coral' | 'gold' | 'star' | 'visor';
+  racket: 'classic' | 'rainbow' | 'star_pro' | 'clay_champ';
+  companion: 'none' | 'ball_buddy' | 'puppy' | 'star_cat' | 'trophy_owl';
+}
+
+export interface ClubInfo {
+  clubName: string;
+  coachName: string;
+  coachPhone: string;
+  coachEmail: string;
+  schedule: string;
+  courtSurface: string;
+}
+
+export interface EquipmentInfo {
+  racketModel: string;
+  racketSize: string;
+  gripColor: string;
+  shoeSize: string;
+  notes: string;
+}
+
+export interface SkillEntry {
+  level: number; // 1 to 5
+  note: string;
+  updatedAt: string;
+}
+
+export interface ChildProfile {
+  id: string;
+  name: string;
+  age: number;
+  currentBall: BallLevel;
+  starsBalance: number;
+  totalStarsEarned: number;
+  streakCount: number;
+  childTheme: ChildTheme;
+  avatarConfig: AvatarConfig;
+  unlockedItems: string[];
+  milestonesCompleted: string[];
+  skillLevels: Record<SkillKey, SkillEntry>;
+  clubInfo: ClubInfo;
+  equipmentInfo: EquipmentInfo;
+  createdAt: string;
+}
+
+export interface TrainingSession {
+  id: string;
+  childId: string;
+  sessionDate: string; // YYYY-MM-DD
+  sessionType: SessionType;
+  durationMin: number;
+  focusSkills: SkillKey[];
+  effortRating: number; // 1 to 5
+  starsAwarded: number;
+  coachNote: string;
+  parentNote: string;
+  childMood?: ChildMood;
+  childFavoriteMoment?: string;
+  createdAt: string;
+}
+
+export interface Challenge {
+  id: string;
+  childId: string;
+  title: string;
+  description: string;
+  category: 'technique' | 'echanges' | 'service' | 'fairplay' | 'jeu';
+  starsReward: number;
+  status: 'active' | 'pending_approval' | 'completed';
+  weekLabel: string;
+  parentFeedback?: string;
+  requestedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+}
+
+export interface TournamentEntry {
+  id: string;
+  childId: string;
+  name: string;
+  eventDate: string;
+  ballLevel: BallLevel;
+  matchesPlayed: number;
+  highlight: string;
+  positivePoints: string;
+  location: string;
+  createdAt: string;
+}
+
+export interface RewardItem {
+  id: string;
+  childId: string;
+  title: string;
+  description: string;
+  emoji: string;
+  starCost: number;
+  active: boolean;
+}
+
+export interface RewardRedemption {
+  id: string;
+  childId: string;
+  rewardId: string;
+  rewardTitle: string;
+  rewardEmoji: string;
+  starCost: number;
+  status: 'pending' | 'delivered' | 'declined';
+  requestedAt: string;
+  deliveredAt?: string;
+}
+
+export interface MemoryItem {
+  id: string;
+  childId: string;
+  title: string;
+  memoryDate: string;
+  caption: string;
+  mediaType: 'photo' | 'video_link';
+  mediaUrl: string;
+  storagePath?: string;
+  tag: string;
+  createdAt: string;
+}
+
+export interface QuizAttempt {
+  id: string;
+  childId: string;
+  attemptDate: string; // YYYY-MM-DD
+  score: number;
+  totalQuestions: number;
+  starsEarned: number;
+  createdAt: string;
+}
+
+export interface UpcomingEvent {
+  id: string;
+  childId: string;
+  title: string;
+  eventDate: string;
+  eventTime: string;
+  eventType: 'cours' | 'plateau' | 'stage' | 'autre';
+  location: string;
+  notes: string;
+}
+
+export interface FamilyState {
+  familyName: string;
+  parentPin: string;
+  tabletLocked: boolean;
+  activeChildId: string;
+  children: ChildProfile[];
+  sessions: TrainingSession[];
+  challenges: Challenge[];
+  tournaments: TournamentEntry[];
+  rewards: RewardItem[];
+  redemptions: RewardRedemption[];
+  memories: MemoryItem[];
+  quizAttempts: QuizAttempt[];
+  upcomingEvents: UpcomingEvent[];
+}
