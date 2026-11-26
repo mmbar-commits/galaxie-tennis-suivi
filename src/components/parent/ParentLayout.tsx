@@ -8,6 +8,7 @@ import {
   FileText,
   LayoutDashboard,
   Lock,
+  Settings,
   Sparkles,
   Target,
   TrendingUp,
@@ -17,10 +18,18 @@ import { ParentChallenges } from './ParentChallenges';
 import { ParentDashboard } from './ParentDashboard';
 import { ParentNotebook } from './ParentNotebook';
 import { ParentSessions } from './ParentSessions';
+import { ParentSettings } from './ParentSettings';
 import { ParentSkills } from './ParentSkills';
 import { ParentTournaments } from './ParentTournaments';
 
-type ParentTab = 'dashboard' | 'skills' | 'sessions' | 'challenges' | 'tournaments' | 'notebook';
+type ParentTab =
+  | 'dashboard'
+  | 'skills'
+  | 'sessions'
+  | 'challenges'
+  | 'tournaments'
+  | 'notebook'
+  | 'settings';
 
 interface ParentLayoutProps {
   onSwitchToChild: (lockTablet?: boolean) => void;
@@ -43,8 +52,8 @@ export function ParentLayout({
   } = useTennisStore();
   const [activeTab, setActiveTab] = useState<ParentTab>('dashboard');
 
-  const navItems: {
-    id: ParentTab;
+  const childNavItems: {
+    id: Exclude<ParentTab, 'settings'>;
     label: string;
     shortLabel: string;
     icon: typeof LayoutDashboard;
@@ -61,7 +70,12 @@ export function ParentLayout({
     { id: 'sessions', label: 'Séances (30s)', shortLabel: 'Séances', icon: CalendarDays },
     { id: 'challenges', label: 'Défis & Boutique', shortLabel: 'Défis', icon: Target },
     { id: 'tournaments', label: 'Plateaux & Photos', shortLabel: 'Plateaux', icon: Award },
-    { id: 'notebook', label: 'Carnet & Réglages', shortLabel: 'Carnet', icon: BookOpen },
+    {
+      id: 'notebook',
+      label: `Carnet de ${activeChild.name}`,
+      shortLabel: 'Carnet',
+      icon: BookOpen,
+    },
   ];
 
   return (
@@ -76,14 +90,14 @@ export function ParentLayout({
           />
           <div>
             <p className="parent-display text-lg font-bold leading-tight">Galaxie Tennis</p>
-            <p className="text-[11px] font-medium text-emerald-200">Espace Gestion Parent</p>
+            <p className="text-[11px] font-medium text-emerald-200">{state.familyName}</p>
           </div>
         </div>
 
         {/* Multi-child selector */}
         <div className="border-b border-white/10 px-4 py-3.5">
           <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-emerald-200/80">
-            Joueuse suivie
+            Enfant sélectionné
           </label>
           <select
             value={activeChild.id}
@@ -98,34 +112,57 @@ export function ParentLayout({
           </select>
         </div>
 
-        {/* Nav Links */}
-        <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Navigation parent">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setActiveTab(item.id)}
-                className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
-                  active
-                    ? 'bg-[#C85A32] text-white shadow-sm'
-                    : 'text-emerald-100 hover:bg-white/10 hover:text-white'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </span>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#F4B942] px-1.5 text-[11px] font-extrabold text-[#1F2421]">
-                    {item.badge}
+        {/* Nav Links — Separated into Child-specific & General */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation parent">
+          <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-200/75">
+            Suivi de {activeChild.name}
+          </p>
+          <div className="space-y-1">
+            {childNavItems.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
+                    active
+                      ? 'bg-[#C85A32] text-white shadow-sm'
+                      : 'text-emerald-100 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{item.label}</span>
                   </span>
-                )}
-              </button>
-            );
-          })}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#F4B942] px-1.5 text-[11px] font-extrabold text-[#1F2421]">
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-200/75">
+              Famille & Application
+            </p>
+            <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
+                activeTab === 'settings'
+                  ? 'bg-[#C85A32] text-white shadow-sm'
+                  : 'text-emerald-100 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span>Réglages généraux</span>
+            </button>
+          </div>
         </nav>
 
         {/* Bottom Actions */}
@@ -136,7 +173,11 @@ export function ParentLayout({
             className="flex w-full items-center justify-between rounded-xl bg-white/10 px-3.5 py-2 text-xs font-semibold text-emerald-100 hover:bg-white/15"
           >
             <span className="flex items-center gap-2">
-              {supabaseUser ? <Cloud className="h-4 w-4 text-emerald-300" /> : <CloudOff className="h-4 w-4 text-amber-300" />}
+              {supabaseUser ? (
+                <Cloud className="h-4 w-4 text-emerald-300" />
+              ) : (
+                <CloudOff className="h-4 w-4 text-amber-300" />
+              )}
               {supabaseUser ? 'Cloud Supabase' : 'Mode Démo Local'}
             </span>
             <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">
@@ -166,7 +207,7 @@ export function ParentLayout({
 
       {/* Mobile Top Bar */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#E8DDD0] bg-[#1E4D3B] px-4 py-3 text-white lg:hidden">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <img src="./app-icon.jpg" alt="" className="h-8 w-8 rounded-lg object-cover" />
           <select
             value={activeChild.id}
@@ -180,7 +221,7 @@ export function ParentLayout({
             ))}
           </select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={onOpenPrintReport}
@@ -191,19 +232,21 @@ export function ParentLayout({
           </button>
           <button
             type="button"
-            onClick={onOpenAuthModal}
-            className="rounded-lg bg-white/10 p-2 text-white"
-            title="Synchro Cloud"
+            onClick={() => setActiveTab('settings')}
+            className={`rounded-lg p-2 text-white ${
+              activeTab === 'settings' ? 'bg-[#C85A32]' : 'bg-white/10'
+            }`}
+            title="Réglages généraux (Famille & App)"
           >
-            {supabaseUser ? <Cloud className="h-4 w-4 text-emerald-300" /> : <CloudOff className="h-4 w-4 text-amber-300" />}
+            <Settings className="h-4 w-4" />
           </button>
           <button
             type="button"
             onClick={() => onSwitchToChild(false)}
-            className="inline-flex items-center gap-1 rounded-xl bg-[#F4B942] px-3 py-1.5 text-xs font-extrabold text-[#1F2421]"
+            className="inline-flex items-center gap-1 rounded-xl bg-[#F4B942] px-2.5 py-1.5 text-xs font-extrabold text-[#1F2421]"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Vue Enfant
+            Enfant
           </button>
         </div>
       </header>
@@ -220,18 +263,17 @@ export function ParentLayout({
         {activeTab === 'sessions' && <ParentSessions />}
         {activeTab === 'challenges' && <ParentChallenges />}
         {activeTab === 'tournaments' && <ParentTournaments />}
-        {activeTab === 'notebook' && (
-          <ParentNotebook key={activeChild.id} onOpenAuthModal={onOpenAuthModal} />
-        )}
+        {activeTab === 'notebook' && <ParentNotebook key={activeChild.id} />}
+        {activeTab === 'settings' && <ParentSettings onOpenAuthModal={onOpenAuthModal} />}
       </main>
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Bottom Nav (Child-specific sections) */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E8DDD0] bg-white/95 px-1.5 py-2 backdrop-blur-md lg:hidden"
         aria-label="Navigation mobile parent"
       >
         <div className="mx-auto grid max-w-lg grid-cols-6 gap-1">
-          {navItems.map((item) => {
+          {childNavItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
             return (
