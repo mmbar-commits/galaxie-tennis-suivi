@@ -1,169 +1,107 @@
-import { useState } from 'react';
-import { Check, Gift, Plus, Sparkles, Target, Trash2, X } from 'lucide-react';
-import { CHALLENGE_TEMPLATES } from '../../data/galaxieCatalog';
+import { Check, Gift, Plus, Sparkles, Target, Trash2, Wand2, X } from 'lucide-react';
 import { fireStarCelebration } from '../../lib/confetti';
 import { useTennisStore } from '../../lib/store';
-import type { Challenge } from '../../types/tennis';
 
-const REWARD_EMOJIS = ['🍦', '🎬', '🎨', '🥞', '📚', '🧸', '🏊‍♀️', '🍕', '🎁'];
+interface ParentChallengesProps {
+  onOpenStudio: () => void;
+}
 
-export function ParentChallenges() {
+export function ParentChallenges({ onOpenStudio }: ParentChallengesProps) {
   const {
+    state,
     activeChild,
     childChallenges,
     childRewards,
     childRedemptions,
-    addChallenge,
+    assignStudioChallengeToChildren,
+    assignStudioRewardToChildren,
     deleteChallenge,
     approveChallenge,
     declineChallengeRequest,
-    addReward,
     deleteReward,
     deliverRewardRedemption,
     cancelRewardRedemption,
   } = useTennisStore();
 
-  // Challenge form
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<Challenge['category']>('technique');
-  const [starsReward, setStarsReward] = useState(15);
-
-  // Reward form
-  const [rewTitle, setRewTitle] = useState('');
-  const [rewDesc, setRewDesc] = useState('');
-  const [rewEmoji, setRewEmoji] = useState('🍦');
-  const [rewCost, setRewCost] = useState(30);
-
-  const handleAddChallenge = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    addChallenge({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      starsReward,
-      weekLabel: 'Cette semaine',
-    });
-    setTitle('');
-    setDescription('');
-  };
-
-  const handleAddReward = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rewTitle.trim()) return;
-    addReward({
-      title: rewTitle.trim(),
-      description: rewDesc.trim(),
-      emoji: rewEmoji,
-      starCost: rewCost,
-    });
-    setRewTitle('');
-    setRewDesc('');
-  };
-
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-[#C85A32]">
-          Motivation & Économie d’Étoiles
-        </p>
-        <h1 className="parent-display mt-0.5 text-3xl font-bold text-[#1F2421]">
-          Défis & Boutique de Récompenses
-        </h1>
-        <p className="mt-1 text-sm text-[#5C6660]">
-          Crée des missions ludiques pour la semaine et configure les vraies surprises que{' '}
-          {activeChild.name} peut obtenir avec ses étoiles.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-[#C85A32]">
+            Assignés à {activeChild.name}
+          </p>
+          <h1 className="parent-display mt-0.5 text-3xl font-bold text-[#1F2421]">
+            Défis & Boutique de {activeChild.name}
+          </h1>
+          <p className="mt-1 text-sm text-[#5C6660]">
+            Valide ses réussites ou assigne rapidement des défis et récompenses depuis ton Studio.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenStudio}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#1E4D3B] px-4 py-2.5 text-xs font-bold text-white shadow-xs transition hover:bg-[#163A2C]"
+        >
+          <Wand2 className="h-4 w-4" />
+          Créer dans le Studio Défis & Récompenses
+        </button>
       </div>
 
       {/* SECTION 1: WEEKLY CHALLENGES */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Target className="h-5 w-5 text-[#C85A32]" />
-          <h2 className="parent-display text-xl font-bold text-[#1F2421]">Défis de la semaine</h2>
+          <h2 className="parent-display text-xl font-bold text-[#1F2421]">
+            Défis de {activeChild.name}
+          </h2>
         </div>
 
-        {/* Quick 1-click templates */}
+        {/* Assign from Studio Catalog */}
         <div className="parent-card p-5">
-          <p className="mb-2.5 text-xs font-bold uppercase tracking-wider text-[#5C6660]">
-            Idées prêtes à l’emploi (Galaxie 6–9 ans) — 1 clic pour ajouter
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {CHALLENGE_TEMPLATES.map((tpl) => (
-              <button
-                key={tpl.title}
-                type="button"
-                onClick={() =>
-                  addChallenge({
-                    ...tpl,
-                    weekLabel: 'Cette semaine',
-                  })
-                }
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-1.5 text-xs font-semibold text-[#1F2421] transition hover:border-[#C85A32] hover:bg-[#FDF0EB]"
-              >
-                <Plus className="h-3.5 w-3.5 text-[#C85A32]" />
-                {tpl.title} (+{tpl.starsReward}⭐)
-              </button>
-            ))}
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#5C6660]">
+              Assigner depuis le Studio ({state.studioChallenges.length} modèles)
+            </p>
+            <button
+              type="button"
+              onClick={onOpenStudio}
+              className="text-xs font-bold text-[#C85A32] hover:underline"
+            >
+              Modifier le Studio →
+            </button>
           </div>
-
-          <form
-            onSubmit={handleAddChallenge}
-            className="mt-4 grid gap-3 border-t border-[#EFE6DA] pt-4 md:grid-cols-12"
-          >
-            <div className="md:col-span-5">
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Titre du défi personnalisé..."
-                className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32]"
-              />
-            </div>
-            <div className="md:col-span-4">
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Détail court (optionnel)..."
-                className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32]"
-              />
-            </div>
-            <div className="flex gap-2 md:col-span-3">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as Challenge['category'])}
-                className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-2 py-2 text-xs font-semibold outline-none"
-              >
-                <option value="technique">Technique</option>
-                <option value="echanges">Échanges</option>
-                <option value="service">Service</option>
-                <option value="fairplay">Fair-play</option>
-                <option value="jeu">Jeu</option>
-              </select>
-              <select
-                value={starsReward}
-                onChange={(e) => setStarsReward(Number(e.target.value))}
-                className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-2 py-2 text-xs font-bold text-[#9A6700] outline-none"
-              >
-                <option value={10}>10 ⭐</option>
-                <option value={15}>15 ⭐</option>
-                <option value={20}>20 ⭐</option>
-                <option value={30}>30 ⭐</option>
-              </select>
-              <button
-                type="submit"
-                className="rounded-xl bg-[#C85A32] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#A54522]"
-              >
-                Ajouter
-              </button>
-            </div>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            {state.studioChallenges.map((tpl) => {
+              const alreadyActive = childChallenges.some(
+                (c) =>
+                  c.status !== 'completed' &&
+                  (c.templateId === tpl.id || c.title.toLowerCase() === tpl.title.toLowerCase()),
+              );
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  disabled={alreadyActive}
+                  onClick={() => assignStudioChallengeToChildren(tpl.id, [activeChild.id])}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    alreadyActive
+                      ? 'border-[#1E4D3B]/20 bg-[#E9F3EE] text-[#1E4D3B]'
+                      : 'border-[#E8DDD0] bg-[#FAF6F0] text-[#1F2421] hover:border-[#C85A32] hover:bg-[#FDF0EB]'
+                  }`}
+                >
+                  {alreadyActive ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5 text-[#C85A32]" />
+                  )}
+                  {tpl.title} (+{tpl.starsReward}⭐)
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Challenge List */}
+        {/* Child Challenge List */}
         <div className="grid gap-3 md:grid-cols-2">
           {childChallenges.map((ch) => (
             <div
@@ -194,13 +132,15 @@ export function ParentChallenges() {
                     )}
                   </div>
                   <h3 className="mt-2 font-bold text-[#1F2421]">{ch.title}</h3>
-                  {ch.description && <p className="mt-0.5 text-xs text-[#5C6660]">{ch.description}</p>}
+                  {ch.description && (
+                    <p className="mt-0.5 text-xs text-[#5C6660]">{ch.description}</p>
+                  )}
                 </div>
                 <button
                   type="button"
                   onClick={() => deleteChallenge(ch.id)}
                   className="rounded-lg p-1 text-[#9C948A] hover:bg-red-50 hover:text-red-600"
-                  title="Supprimer"
+                  title="Retirer ce défi"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -240,66 +180,53 @@ export function ParentChallenges() {
         <div className="flex items-center gap-2">
           <Gift className="h-5 w-5 text-[#1E4D3B]" />
           <h2 className="parent-display text-xl font-bold text-[#1F2421]">
-            Boutique de récompenses réelles
+            Boutique de {activeChild.name}
           </h2>
         </div>
 
-        <form onSubmit={handleAddReward} className="parent-card p-5">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[#5C6660]">
-            Ajouter une surprise échangeable contre des étoiles
-          </p>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {REWARD_EMOJIS.map((em) => (
-              <button
-                key={em}
-                type="button"
-                onClick={() => setRewEmoji(em)}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl border text-lg transition ${
-                  rewEmoji === em
-                    ? 'border-[#C85A32] bg-[#FDF0EB] scale-105'
-                    : 'border-[#E8DDD0] bg-[#FAF6F0]'
-                }`}
-              >
-                {em}
-              </button>
-            ))}
+        {/* Assign Rewards from Studio */}
+        <div className="parent-card p-5">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#5C6660]">
+              Ajouter à sa boutique depuis le Studio ({state.studioRewards.length} modèles)
+            </p>
+            <button
+              type="button"
+              onClick={onOpenStudio}
+              className="text-xs font-bold text-[#1E4D3B] hover:underline"
+            >
+              Créer une récompense →
+            </button>
           </div>
-          <div className="grid gap-3 md:grid-cols-12">
-            <input
-              type="text"
-              required
-              value={rewTitle}
-              onChange={(e) => setRewTitle(e.target.value)}
-              placeholder="Ex : Choisir le dessert, Nouveau surgrip rose..."
-              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32] md:col-span-5"
-            />
-            <input
-              type="text"
-              value={rewDesc}
-              onChange={(e) => setRewDesc(e.target.value)}
-              placeholder="Petite description motivante..."
-              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32] md:col-span-4"
-            />
-            <div className="flex gap-2 md:col-span-3">
-              <input
-                type="number"
-                min={5}
-                max={500}
-                step={5}
-                value={rewCost}
-                onChange={(e) => setRewCost(Number(e.target.value))}
-                className="w-20 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-2.5 py-2 text-sm font-bold text-[#9A6700] outline-none"
-                title="Coût en étoiles"
-              />
-              <button
-                type="submit"
-                className="flex-1 rounded-xl bg-[#1E4D3B] px-3 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
-              >
-                + Boutique
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {state.studioRewards.map((tpl) => {
+              const alreadyInShop = childRewards.some(
+                (r) =>
+                  r.templateId === tpl.id || r.title.toLowerCase() === tpl.title.toLowerCase(),
+              );
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  disabled={alreadyInShop}
+                  onClick={() => assignStudioRewardToChildren(tpl.id, [activeChild.id])}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    alreadyInShop
+                      ? 'border-[#1E4D3B]/20 bg-[#E9F3EE] text-[#1E4D3B]'
+                      : 'border-[#E8DDD0] bg-[#FAF6F0] text-[#1F2421] hover:border-[#1E4D3B] hover:bg-[#E9F3EE]'
+                  }`}
+                >
+                  {alreadyInShop ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5 text-[#1E4D3B]" />
+                  )}
+                  {tpl.emoji} {tpl.title} ({tpl.starCost}⭐)
+                </button>
+              );
+            })}
           </div>
-        </form>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {childRewards.map((rew) => (
@@ -320,6 +247,7 @@ export function ParentChallenges() {
                 type="button"
                 onClick={() => deleteReward(rew.id)}
                 className="rounded-lg p-1 text-[#9C948A] hover:bg-red-50 hover:text-red-600"
+                title="Retirer de sa boutique"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

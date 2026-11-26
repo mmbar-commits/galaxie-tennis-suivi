@@ -1,15 +1,21 @@
 import { useState } from 'react';
-import { Calendar, Plus, Save, Trash2, User } from 'lucide-react';
+import { Building2, Calendar, Plus, Save, Settings, Trash2, User } from 'lucide-react';
 import { GALAXIE_LEVELS } from '../../data/galaxieCatalog';
 import { useTennisStore } from '../../lib/store';
 import type { BallLevel, UpcomingEvent } from '../../types/tennis';
 
-export function ParentNotebook() {
+interface ParentNotebookProps {
+  onOpenSettings: () => void;
+}
+
+export function ParentNotebook({ onOpenSettings }: ParentNotebookProps) {
   const {
+    state,
     activeChild,
+    activeChildClub,
     childEvents,
     updateChildProfile,
-    updateClubInfo,
+    assignChildClub,
     updateEquipmentInfo,
     addUpcomingEvent,
     deleteUpcomingEvent,
@@ -20,8 +26,7 @@ export function ParentNotebook() {
   const [childAge, setChildAge] = useState(activeChild.age);
   const [childBall, setChildBall] = useState<BallLevel>(activeChild.currentBall);
 
-  // Club & Equipment
-  const [club, setClub] = useState(activeChild.clubInfo);
+  // Equipment
   const [equip, setEquip] = useState(activeChild.equipmentInfo);
 
   // Upcoming event form
@@ -29,7 +34,7 @@ export function ParentNotebook() {
   const [evtDate, setEvtDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [evtTime, setEvtTime] = useState('14h00');
   const [evtType, setEvtType] = useState<UpcomingEvent['eventType']>('cours');
-  const [evtLocation, setEvtLocation] = useState(activeChild.clubInfo.clubName || '');
+  const [evtLocation, setEvtLocation] = useState(activeChildClub?.name || '');
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -43,12 +48,6 @@ export function ParentNotebook() {
     if (!childName.trim()) return;
     updateChildProfile({ name: childName.trim(), age: childAge, currentBall: childBall });
     notify(`Profil de ${childName.trim()} mis à jour !`);
-  };
-
-  const handleSaveClub = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateClubInfo(club);
-    notify('Infos club & coach enregistrées !');
   };
 
   const handleSaveEquip = (e: React.FormEvent) => {
@@ -83,7 +82,7 @@ export function ParentNotebook() {
             Carnet de {activeChild.name}
           </h1>
           <p className="mt-1 text-sm text-[#5C6660]">
-            Profil, niveau de balle, club, équipement et calendrier propres à {activeChild.name}.
+            Identité, club assigné, équipement et calendrier propres à {activeChild.name}.
           </p>
         </div>
         {toast && (
@@ -149,56 +148,91 @@ export function ParentNotebook() {
         </div>
       </form>
 
-      {/* Club & Equipment 2-column */}
+      {/* Assigned Club & Equipment 2-column */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={handleSaveClub} className="parent-card space-y-3 p-5">
-          <h2 className="parent-display text-lg font-bold text-[#1E4D3B]">
-            🏟️ Club & Coordonnées Coach
-          </h2>
-          <input
-            type="text"
-            value={club.clubName}
-            onChange={(e) => setClub({ ...club, clubName: e.target.value })}
-            placeholder="Nom du club"
-            className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32]"
-          />
-          <div className="grid grid-cols-2 gap-2.5">
-            <input
-              type="text"
-              value={club.coachName}
-              onChange={(e) => setClub({ ...club, coachName: e.target.value })}
-              placeholder="Prénom / Nom du coach"
-              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
-            />
-            <input
-              type="text"
-              value={club.coachPhone}
-              onChange={(e) => setClub({ ...club, coachPhone: e.target.value })}
-              placeholder="Téléphone coach"
-              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
-            />
+        <section className="parent-card flex flex-col justify-between space-y-4 p-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="parent-display flex items-center gap-2 text-lg font-bold text-[#1E4D3B]">
+                <Building2 className="h-5 w-5" />
+                Club assigné à {activeChild.name}
+              </h2>
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1 text-xs font-bold text-[#C85A32] hover:underline"
+              >
+                <Settings className="h-3.5 w-3.5" /> Gérer les clubs
+              </button>
+            </div>
+
+            <select
+              value={activeChild.clubId ?? ''}
+              onChange={(e) => {
+                const nextId = e.target.value || undefined;
+                assignChildClub(activeChild.id, nextId);
+                const chosen = state.clubs.find((c) => c.id === nextId);
+                if (chosen) setEvtLocation(chosen.name);
+                notify(
+                  chosen
+                    ? `Club « ${chosen.name} » assigné à ${activeChild.name} !`
+                    : `Aucun club assigné à ${activeChild.name}.`,
+                );
+              }}
+              className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2.5 text-sm font-bold text-[#1F2421] outline-none focus:border-[#C85A32]"
+            >
+              <option value="">— Aucun club assigné —</option>
+              {state.clubs.map((cl) => (
+                <option key={cl.id} value={cl.id}>
+                  🏟️ {cl.name}
+                </option>
+              ))}
+            </select>
+
+            {activeChildClub ? (
+              <div className="space-y-1.5 rounded-2xl border border-[#EFE6DA] bg-[#FAF6F0] p-4 text-xs">
+                <p className="text-sm font-bold text-[#1F2421]">{activeChildClub.name}</p>
+                {activeChildClub.coachName && (
+                  <p className="text-[#1E4D3B]">
+                    <strong>Coach :</strong> {activeChildClub.coachName}
+                  </p>
+                )}
+                {activeChildClub.coachPhone && (
+                  <p className="text-[#5C6660]">
+                    <strong>Tél :</strong> {activeChildClub.coachPhone}
+                  </p>
+                )}
+                {activeChildClub.coachEmail && (
+                  <p className="text-[#5C6660]">
+                    <strong>Email :</strong> {activeChildClub.coachEmail}
+                  </p>
+                )}
+                {activeChildClub.schedule && (
+                  <p className="text-[#5C6660]">
+                    <strong>Horaires :</strong> {activeChildClub.schedule}
+                  </p>
+                )}
+                {activeChildClub.courtSurface && (
+                  <p className="text-[#5C6660]">
+                    <strong>Surfaces :</strong> {activeChildClub.courtSurface}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="rounded-2xl bg-[#FAF6F0] p-4 text-xs text-[#5C6660]">
+                Sélectionne un club ci-dessus ou ajoute tes clubs dans{' '}
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="font-bold text-[#C85A32] underline"
+                >
+                  Réglages généraux
+                </button>
+                .
+              </p>
+            )}
           </div>
-          <input
-            type="email"
-            value={club.coachEmail}
-            onChange={(e) => setClub({ ...club, coachEmail: e.target.value })}
-            placeholder="Email coach"
-            className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
-          />
-          <input
-            type="text"
-            value={club.schedule}
-            onChange={(e) => setClub({ ...club, schedule: e.target.value })}
-            placeholder="Horaires habituels des cours"
-            className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
-          />
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E4D3B] px-4 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
-          >
-            <Save className="h-3.5 w-3.5" /> Enregistrer club
-          </button>
-        </form>
+        </section>
 
         <form onSubmit={handleSaveEquip} className="parent-card space-y-3 p-5">
           <h2 className="parent-display text-lg font-bold text-[#1E4D3B]">

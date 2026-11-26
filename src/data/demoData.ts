@@ -1,4 +1,5 @@
-import type { FamilyState } from '../types/tennis';
+import { CHALLENGE_TEMPLATES } from './galaxieCatalog';
+import type { Club, FamilyState, StudioChallengeTemplate, StudioRewardTemplate } from '../types/tennis';
 
 function daysAgo(days: number): string {
   const d = new Date();
@@ -12,21 +13,82 @@ function daysAhead(days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+export function createDefaultStudioChallenges(): StudioChallengeTemplate[] {
+  return CHALLENGE_TEMPLATES.map((tpl, idx) => ({
+    id: `tpl-ch-${idx + 1}`,
+    ...tpl,
+  }));
+}
+
+export function createDefaultStudioRewards(): StudioRewardTemplate[] {
+  return [
+    {
+      id: 'tpl-rew-1',
+      title: 'Choisir le film du vendredi',
+      description: 'Tu es la cheffe de la soirée cinéma en famille !',
+      emoji: '🎬',
+      starCost: 30,
+    },
+    {
+      id: 'tpl-rew-2',
+      title: 'Glace après le cours',
+      description: 'Une bonne boule de glace au choix après l’entraînement.',
+      emoji: '🍦',
+      starCost: 25,
+    },
+    {
+      id: 'tpl-rew-3',
+      title: 'Nouveau grip coloré',
+      description: 'Choisir un nouveau surgrip rigolo pour sa raquette.',
+      emoji: '🎨',
+      starCost: 50,
+    },
+    {
+      id: 'tpl-rew-4',
+      title: 'Sortie crêpes en famille',
+      description: 'Un goûter crêpes chocolat ou confiture au choix !',
+      emoji: '🥞',
+      starCost: 60,
+    },
+  ];
+}
+
 export function createInitialDemoState(): FamilyState {
   const childId = 'child-lea-demo';
+  const clubId = 'club-lilas-demo';
   const now = new Date().toISOString();
+
+  const defaultClubs: Club[] = [
+    {
+      id: clubId,
+      name: 'Tennis Club des Lilas',
+      coachName: 'Coach Camille',
+      coachPhone: '06 12 34 56 78',
+      coachEmail: 'camille.coach@tclilas.fr',
+      schedule: 'Mercredi 14h00–15h00 & Samedi 10h30–11h30',
+      courtSurface: 'Terre battue & Résine couverte',
+      address: '12 allée des Courts',
+    },
+  ];
+
+  const studioChallenges = createDefaultStudioChallenges();
+  const studioRewards = createDefaultStudioRewards();
 
   return {
     familyName: 'Famille Tennis',
     parentPin: '1234',
     tabletLocked: false,
     activeChildId: childId,
+    clubs: defaultClubs,
+    studioChallenges,
+    studioRewards,
     children: [
       {
         id: childId,
         name: 'Léa',
         age: 7,
         currentBall: 'rouge',
+        clubId,
         starsBalance: 45,
         totalStarsEarned: 115,
         streakCount: 4,
@@ -116,6 +178,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'sess-1',
         childId,
+        clubId,
         sessionDate: daysAgo(1),
         sessionType: 'cours_club',
         durationMin: 60,
@@ -124,12 +187,14 @@ export function createInitialDemoState(): FamilyState {
         starsAwarded: 15,
         coachNote:
           'Super séance sur le service par-dessus la tête ! Léa a réussi 6 échanges de suite en fond de court.',
-        parentNote: 'Elle est sortie du court avec un immense sourire et voulait rejouer dans le jardin.',
+        parentNote:
+          'Elle est sortie du court avec un immense sourire et voulait rejouer dans le jardin.',
         createdAt: now,
       },
       {
         id: 'sess-2',
         childId,
+        clubId,
         sessionDate: daysAgo(4),
         sessionType: 'jeu_famille',
         durationMin: 40,
@@ -145,6 +210,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'sess-3',
         childId,
+        clubId,
         sessionDate: daysAgo(8),
         sessionType: 'cours_club',
         durationMin: 60,
@@ -160,6 +226,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'sess-4',
         childId,
+        clubId,
         sessionDate: daysAgo(15),
         sessionType: 'plateau',
         durationMin: 90,
@@ -177,6 +244,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'chal-1',
         childId,
+        templateId: 'tpl-ch-1',
         title: 'Faire 8 échanges de suite',
         description: 'Réussir un échange de 8 balles sans faute sur terrain rouge.',
         category: 'echanges',
@@ -189,6 +257,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'chal-2',
         childId,
+        templateId: 'tpl-ch-2',
         title: '3 services par-dessus la tête',
         description: 'Lancer la balle bien haut et réussir 3 services dans le carré.',
         category: 'service',
@@ -200,6 +269,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'chal-3',
         childId,
+        templateId: 'tpl-ch-6',
         title: 'Médaille du Super Fair-Play',
         description: 'Encourager ses copines et ranger toutes les balles avec le sourire.',
         category: 'fairplay',
@@ -226,44 +296,16 @@ export function createInitialDemoState(): FamilyState {
         createdAt: now,
       },
     ],
-    rewards: [
-      {
-        id: 'rew-1',
-        childId,
-        title: 'Choisir le film du vendredi',
-        description: 'Tu es la cheffe de la soirée cinéma en famille !',
-        emoji: '🎬',
-        starCost: 30,
-        active: true,
-      },
-      {
-        id: 'rew-2',
-        childId,
-        title: 'Glace après le cours',
-        description: 'Une bonne boule de glace au choix après l’entraînement.',
-        emoji: '🍦',
-        starCost: 25,
-        active: true,
-      },
-      {
-        id: 'rew-3',
-        childId,
-        title: 'Nouveau grip coloré',
-        description: 'Choisir un nouveau surgrip rigolo pour sa raquette.',
-        emoji: '🎨',
-        starCost: 50,
-        active: true,
-      },
-      {
-        id: 'rew-4',
-        childId,
-        title: 'Sortie crêpes en famille',
-        description: 'Un goûter crêpes chocolat ou confiture au choix !',
-        emoji: '🥞',
-        starCost: 60,
-        active: true,
-      },
-    ],
+    rewards: studioRewards.map((tpl, idx) => ({
+      id: `rew-${idx + 1}`,
+      childId,
+      templateId: tpl.id,
+      title: tpl.title,
+      description: tpl.description,
+      emoji: tpl.emoji,
+      starCost: tpl.starCost,
+      active: true,
+    })),
     redemptions: [],
     memories: [
       {

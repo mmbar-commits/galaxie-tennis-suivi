@@ -30,7 +30,9 @@ interface ParentDashboardProps {
 
 export function ParentDashboard({ onNavigate, onOpenPrintReport }: ParentDashboardProps) {
   const {
+    state,
     activeChild,
+    activeChildClub,
     childSessions,
     childChallenges,
     childRedemptions,
@@ -79,7 +81,7 @@ export function ParentDashboard({ onNavigate, onOpenPrintReport }: ParentDashboa
           </h1>
           <p className="mt-1 text-sm text-[#5C6660]">
             {ballInfo.emoji} {ballInfo.name} ({ballDone}/{ballInfo.milestones.length} étapes) •{' '}
-            {activeChild.clubInfo.clubName || 'Club de tennis'}
+            {activeChildClub?.name || activeChild.clubInfo.clubName || 'Aucun club assigné'}
           </p>
         </div>
 
@@ -288,17 +290,19 @@ export function ParentDashboard({ onNavigate, onOpenPrintReport }: ParentDashboa
                 {childSessions.slice(0, 3).map((s) => {
                   const meta = SESSION_TYPE_LABELS[s.sessionType];
                   const moodObj = CHILD_MOOD_OPTIONS.find((m) => m.id === s.childMood);
+                  const sessClub = s.clubId ? state.clubs.find((c) => c.id === s.clubId) : undefined;
                   return (
                     <div
                       key={s.id}
                       className="rounded-xl border border-[#EFE6DA] bg-[#FAF6F0] p-3.5"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-base">{meta.emoji}</span>
                           <span className="text-sm font-bold text-[#1F2421]">{meta.label}</span>
                           <span className="text-xs text-[#5C6660]">
-                            • {new Date(s.sessionDate).toLocaleDateString('fr-FR')} ({s.durationMin} min)
+                            • {new Date(s.sessionDate).toLocaleDateString('fr-FR')} ({s.durationMin}{' '}
+                            min){sessClub ? ` • ${sessClub.name}` : ''}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">

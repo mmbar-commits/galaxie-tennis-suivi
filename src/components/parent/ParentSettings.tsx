@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import {
+  Building2,
   Check,
   Cloud,
   Download,
   Home,
   Lock,
+  Pencil,
+  Plus,
   RotateCcw,
   Shield,
+  Trash2,
   Upload,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import { GALAXIE_LEVELS } from '../../data/galaxieCatalog';
 import { useTennisStore } from '../../lib/store';
@@ -25,6 +30,9 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
     activeChild,
     supabaseUser,
     setActiveChildId,
+    addClub,
+    updateClub,
+    deleteClub,
     addChild,
     updateFamilyName,
     updateParentPin,
@@ -38,12 +46,57 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
   const [newChildName, setNewChildName] = useState('');
   const [newChildAge, setNewChildAge] = useState(6);
   const [newChildBall, setNewChildBall] = useState<BallLevel>('violet');
+  const [newChildClubId, setNewChildClubId] = useState(state.clubs[0]?.id ?? '');
   const [pinDraft, setPinDraft] = useState(state.parentPin);
+
+  // Club create/edit form
+  const [editingClubId, setEditingClubId] = useState<string | null>(null);
+  const [clubName, setClubName] = useState('');
+  const [coachName, setCoachName] = useState('');
+  const [coachPhone, setCoachPhone] = useState('');
+  const [coachEmail, setCoachEmail] = useState('');
+  const [clubSchedule, setClubSchedule] = useState('');
+  const [clubSurface, setClubSurface] = useState('');
+  const [clubAddress, setClubAddress] = useState('');
+
   const [toast, setToast] = useState<string | null>(null);
 
   const notify = (msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3200);
+  };
+
+  const resetClubForm = () => {
+    setEditingClubId(null);
+    setClubName('');
+    setCoachName('');
+    setCoachPhone('');
+    setCoachEmail('');
+    setClubSchedule('');
+    setClubSurface('');
+    setClubAddress('');
+  };
+
+  const handleSaveClub = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clubName.trim()) return;
+    const payload = {
+      name: clubName.trim(),
+      coachName: coachName.trim(),
+      coachPhone: coachPhone.trim(),
+      coachEmail: coachEmail.trim(),
+      schedule: clubSchedule.trim(),
+      courtSurface: clubSurface.trim(),
+      address: clubAddress.trim(),
+    };
+    if (editingClubId) {
+      updateClub(editingClubId, payload);
+      notify(`Club « ${payload.name} » mis à jour !`);
+    } else {
+      addClub(payload);
+      notify(`Club « ${payload.name} » ajouté ! Tu peux maintenant l'assigner aux enfants et séances.`);
+    }
+    resetClubForm();
   };
 
   const handleSaveFamilyName = (e: React.FormEvent) => {
@@ -57,7 +110,12 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
     e.preventDefault();
     if (!newChildName.trim()) return;
     const createdName = newChildName.trim();
-    addChild({ name: createdName, age: newChildAge, currentBall: newChildBall });
+    addChild({
+      name: createdName,
+      age: newChildAge,
+      currentBall: newChildBall,
+      clubId: newChildClubId || undefined,
+    });
     setNewChildName('');
     notify(`Profil de ${createdName} créé et sélectionné !`);
   };
@@ -88,14 +146,14 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-[#C85A32]">
-            Administration Globale • Famille & Appareils
+            Administration Globale • Clubs, Famille & Appareils
           </p>
           <h1 className="parent-display mt-0.5 text-3xl font-bold text-[#1F2421]">
             Réglages Généraux
           </h1>
           <p className="mt-1 text-sm text-[#5C6660]">
-            Ces paramètres s’appliquent à toute l’application (famille, sécurité PIN, cloud et
-            sauvegardes).
+            Gère tes clubs de tennis, les profils enfants, la sécurité PIN, le Cloud Supabase et les
+            sauvegardes.
           </p>
         </div>
         {toast && (
@@ -105,6 +163,179 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
         )}
       </div>
 
+      {/* SECTION 1: CENTRALIZED CLUBS MANAGEMENT */}
+      <section className="parent-card space-y-5 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="parent-display flex items-center gap-2 text-xl font-bold text-[#1E4D3B]">
+              <Building2 className="h-5 w-5" />
+              Gestion des Clubs ({state.clubs.length})
+            </h2>
+            <p className="text-xs text-[#5C6660]">
+              Enregistre un ou plusieurs clubs ici, puis assigne-les à chaque enfant (Carnet) et à
+              chaque entraînement (Séances).
+            </p>
+          </div>
+          {editingClubId && (
+            <button
+              type="button"
+              onClick={resetClubForm}
+              className="inline-flex items-center gap-1 rounded-xl border border-[#E8DDD0] px-3 py-1.5 text-xs font-semibold text-[#5C6660]"
+            >
+              <X className="h-3.5 w-3.5" /> Annuler modification
+            </button>
+          )}
+        </div>
+
+        {/* Existing Clubs List */}
+        {state.clubs.length > 0 && (
+          <div className="grid gap-3 md:grid-cols-2">
+            {state.clubs.map((club) => {
+              const linkedChildren = state.children.filter((c) => c.clubId === club.id).length;
+              const linkedSessions = state.sessions.filter((s) => s.clubId === club.id).length;
+              return (
+                <div
+                  key={club.id}
+                  className="rounded-2xl border border-[#EFE6DA] bg-[#FAF6F0] p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-bold text-[#1F2421]">🏟️ {club.name}</h3>
+                      {club.coachName && (
+                        <p className="mt-0.5 text-xs font-semibold text-[#1E4D3B]">
+                          Coach : {club.coachName}
+                          {club.coachPhone ? ` • ${club.coachPhone}` : ''}
+                        </p>
+                      )}
+                      {club.schedule && (
+                        <p className="mt-0.5 text-xs text-[#5C6660]">🕒 {club.schedule}</p>
+                      )}
+                      {(club.courtSurface || club.address) && (
+                        <p className="mt-0.5 text-xs text-[#5C6660]">
+                          {[club.courtSurface, club.address].filter(Boolean).join(' • ')}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingClubId(club.id);
+                          setClubName(club.name);
+                          setCoachName(club.coachName);
+                          setCoachPhone(club.coachPhone);
+                          setCoachEmail(club.coachEmail);
+                          setClubSchedule(club.schedule);
+                          setClubSurface(club.courtSurface);
+                          setClubAddress(club.address);
+                        }}
+                        className="rounded-lg p-1.5 text-[#5C6660] hover:bg-white hover:text-[#1F2421]"
+                        title="Modifier ce club"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Supprimer le club « ${club.name} » ?`)) {
+                            deleteClub(club.id);
+                            notify('Club supprimé.');
+                          }
+                        }}
+                        className="rounded-lg p-1.5 text-[#9C948A] hover:bg-red-50 hover:text-red-600"
+                        title="Supprimer ce club"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#1E4D3B]">
+                      {linkedChildren} enfant{linkedChildren > 1 ? 's' : ''}
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#5C6660]">
+                      {linkedSessions} séance{linkedSessions > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Add / Edit Club Form */}
+        <form
+          onSubmit={handleSaveClub}
+          className="space-y-3 border-t border-[#EFE6DA] pt-4"
+        >
+          <p className="text-xs font-bold uppercase tracking-wider text-[#5C6660]">
+            {editingClubId ? 'Modifier le club sélectionné' : '+ Ajouter un club'}
+          </p>
+          <div className="grid gap-2.5 md:grid-cols-3">
+            <input
+              type="text"
+              required
+              value={clubName}
+              onChange={(e) => setClubName(e.target.value)}
+              placeholder="Nom du club *"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm font-semibold outline-none focus:border-[#C85A32]"
+            />
+            <input
+              type="text"
+              value={coachName}
+              onChange={(e) => setCoachName(e.target.value)}
+              placeholder="Nom du coach"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+            <input
+              type="text"
+              value={coachPhone}
+              onChange={(e) => setCoachPhone(e.target.value)}
+              placeholder="Téléphone coach / club"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+            <input
+              type="email"
+              value={coachEmail}
+              onChange={(e) => setCoachEmail(e.target.value)}
+              placeholder="Email coach / club"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+            <input
+              type="text"
+              value={clubSchedule}
+              onChange={(e) => setClubSchedule(e.target.value)}
+              placeholder="Horaires habituels (ex : Merc. 14h)"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+            <input
+              type="text"
+              value={clubSurface}
+              onChange={(e) => setClubSurface(e.target.value)}
+              placeholder="Surface (ex : Terre battue, Résine)"
+              className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            <input
+              type="text"
+              value={clubAddress}
+              onChange={(e) => setClubAddress(e.target.value)}
+              placeholder="Adresse du club (optionnel)"
+              className="min-w-56 flex-1 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
+            />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E4D3B] px-4 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
+            >
+              <Plus className="h-4 w-4" />
+              {editingClubId ? 'Mettre à jour le club' : 'Ajouter ce club'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* SECTION 2: FAMILY, CHILDREN & SECURITY */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Family & Children management */}
         <div className="space-y-5">
@@ -139,6 +370,7 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
             <div className="space-y-2">
               {state.children.map((c) => {
                 const ball = GALAXIE_LEVELS.find((l) => l.id === c.currentBall);
+                const club = state.clubs.find((cl) => cl.id === c.clubId);
                 const isSelected = c.id === activeChild.id;
                 return (
                   <button
@@ -159,7 +391,8 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
                         {c.name}, {c.age} ans
                       </p>
                       <p className="text-xs text-[#5C6660]">
-                        {ball?.emoji} {ball?.name} • {c.starsBalance} ⭐ disponibles
+                        {ball?.emoji} {ball?.name}
+                        {club ? ` • 🏟️ ${club.name}` : ''} • {c.starsBalance} ⭐
                       </p>
                     </div>
                     {isSelected && (
@@ -172,10 +405,7 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
               })}
             </div>
 
-            <form
-              onSubmit={handleAddChild}
-              className="space-y-2.5 border-t border-[#EFE6DA] pt-4"
-            >
+            <form onSubmit={handleAddChild} className="space-y-2.5 border-t border-[#EFE6DA] pt-4">
               <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#5C6660]">
                 <UserPlus className="h-3.5 w-3.5 text-[#1E4D3B]" />
                 Ajouter un autre enfant (frère / sœur)
@@ -198,11 +428,11 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
                   className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <select
                   value={newChildBall}
                   onChange={(e) => setNewChildBall(e.target.value as BallLevel)}
-                  className="flex-1 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-xs font-semibold outline-none"
+                  className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-xs font-semibold outline-none"
                 >
                   {GALAXIE_LEVELS.map((l) => (
                     <option key={l.id} value={l.id}>
@@ -210,13 +440,25 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
                     </option>
                   ))}
                 </select>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[#1E4D3B] px-4 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
+                <select
+                  value={newChildClubId}
+                  onChange={(e) => setNewChildClubId(e.target.value)}
+                  className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-xs font-semibold outline-none"
                 >
-                  + Ajouter
-                </button>
+                  <option value="">Sans club assigné</option>
+                  {state.clubs.map((cl) => (
+                    <option key={cl.id} value={cl.id}>
+                      🏟️ {cl.name}
+                    </option>
+                  ))}
+                </select>
               </div>
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-[#1E4D3B] px-4 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
+              >
+                + Ajouter cet enfant
+              </button>
             </form>
           </section>
         </div>
@@ -308,7 +550,8 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
             <div className="border-t border-[#EFE6DA] pt-4">
               <h3 className="text-sm font-bold text-[#1F2421]">Sauvegarde & Données globales</h3>
               <p className="mt-0.5 text-xs text-[#5C6660]">
-                Exporte ou restaure l’ensemble des profils, séances et souvenirs au format JSON.
+                Exporte ou restaure l’ensemble des profils, clubs, séances et souvenirs au format
+                JSON.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button

@@ -12,6 +12,9 @@ create table if not exists public.families (
   owner_id uuid not null unique references auth.users(id) on delete cascade,
   parent_pin text not null default '1234',
   family_name text not null default 'Ma Famille Tennis',
+  clubs jsonb not null default '[]'::jsonb,
+  studio_challenges jsonb not null default '[]'::jsonb,
+  studio_rewards jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -23,6 +26,7 @@ create table if not exists public.children (
   name text not null,
   age integer not null default 7,
   current_ball text not null default 'rouge' check (current_ball in ('blanc', 'violet', 'rouge', 'orange', 'vert')),
+  club_id text,
   stars_balance integer not null default 0,
   total_stars_earned integer not null default 0,
   streak_count integer not null default 0,
@@ -41,6 +45,7 @@ create table if not exists public.children (
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
   child_id uuid not null references public.children(id) on delete cascade,
+  club_id text,
   session_date date not null default current_date,
   session_type text not null default 'cours_club' check (session_type in ('cours_club', 'jeu_famille', 'stage', 'plateau')),
   duration_min integer not null default 60,

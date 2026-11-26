@@ -1,6 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { createInitialDemoState } from '../data/demoData';
+import {
+  createDefaultStudioChallenges,
+  createDefaultStudioRewards,
+  createInitialDemoState,
+} from '../data/demoData';
 import { DAILY_QUIZ_STAR_CAP } from '../data/galaxieCatalog';
 import {
   getSupabaseClient,
@@ -15,6 +19,7 @@ import type {
   ChildMood,
   ChildProfile,
   ChildTheme,
+  Club,
   ClubInfo,
   EquipmentInfo,
   FamilyState,
@@ -23,6 +28,8 @@ import type {
   RewardItem,
   RewardRedemption,
   SkillKey,
+  StudioChallengeTemplate,
+  StudioRewardTemplate,
   TournamentEntry,
   TrainingSession,
   UpcomingEvent,
@@ -37,13 +44,57 @@ function uid(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function normalizeFamilyState(raw: FamilyState): FamilyState {
+  let clubs = Array.isArray(raw.clubs) ? raw.clubs : [];
+  let children = raw.children;
+
+  // Migrate legacy per-child clubInfo into centralized clubs catalog if needed
+  if (clubs.length === 0) {
+    const firstClubInfo = children[0]?.clubInfo;
+    if (firstClubInfo?.clubName) {
+      const migratedId = 'club-migrated-1';
+      clubs = [
+        {
+          id: migratedId,
+          name: firstClubInfo.clubName,
+          coachName: firstClubInfo.coachName ?? '',
+          coachPhone: firstClubInfo.coachPhone ?? '',
+          coachEmail: firstClubInfo.coachEmail ?? '',
+          schedule: firstClubInfo.schedule ?? '',
+          courtSurface: firstClubInfo.courtSurface ?? '',
+          address: '',
+        },
+      ];
+      children = children.map((c) => ({ ...c, clubId: c.clubId ?? migratedId }));
+    }
+  }
+
+  const studioChallenges =
+    Array.isArray(raw.studioChallenges) && raw.studioChallenges.length > 0
+      ? raw.studioChallenges
+      : createDefaultStudioChallenges();
+
+  const studioRewards =
+    Array.isArray(raw.studioRewards) && raw.studioRewards.length > 0
+      ? raw.studioRewards
+      : createDefaultStudioRewards();
+
+  return {
+    ...raw,
+    clubs,
+    studioChallenges,
+    studioRewards,
+    children,
+  };
+}
+
 function loadLocalState(): FamilyState {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as FamilyState;
       if (parsed && Array.isArray(parsed.children) && parsed.children.length > 0) {
-        return parsed;
+        return normalizeFamilyState(parsed);
       }
     }
   } catch {
@@ -57,6 +108,7 @@ export type SyncStatus = 'local' | 'connecting' | 'synced' | 'syncing' | 'error'
 interface TennisStoreContextValue {
   state: FamilyState;
   activeChild: ChildProfile;
+  activeChildClub: Club | null;
   childSessions: TrainingSession[];
   childChallenges: Challenge[];
   childTournaments: TournamentEntry[];
@@ -85,9 +137,34 @@ interface TennisStoreContextValue {
   updateParentPin: (newPin: string) => void;
   updateFamilyName: (name: string) => void;
 
+  // Global Clubs catalog
+  addClub: (input: Omit<Club, 'id'>) => Club;
+  updateClub: (clubId: string, patch: Partial<Omit<Club, 'id'>>) => void;
+  deleteClub: (clubId: string) => void;
+  assignChildClub: (childId: string, clubId?: string) => void;
+
+  // Studio Challenges & Rewards catalog + assignment
+  addStudioChallenge: (input: Omit<StudioChallengeTemplate, 'id'>) => void;
+  updateStudioChallenge: (
+    templateId: string,
+    patch: Partial<Omit<StudioChallengeTemplate, 'id'>>,
+  ) => void;
+  deleteStudioChallenge: (templateId: string) => void;
+  assignStudioChallengeToChildren: (templateId: string, childIds: string[]) => number;
+
+  addStudioReward: (input: Omit<StudioRewardTemplate, 'id'>) => void;
+  updateStudioReward: (
+    templateId: string,
+    patch: Partial<Omit<StudioRewardTemplate, 'id'>>,
+  ) => void;
+  deleteStudioReward: (templateId: string) => void;
+  assignStudioRewardToChildren: (templateId: string, childIds: string[]) => number;
+
   // Children & profile
-  addChild: (input: { name: string; age: number; currentBall: BallLevel }) => void;
-  updateChildProfile: (patch: Partial<Pick<ChildProfile, 'name' | 'age' | 'currentBall'>>) => void;
+  addChild: (input: { name: string; age: number; currentBall: BallLevel; clubId?: string }) => void;
+  updateChildProfile: (
+    patch: Partial<Pick<ChildProfile, 'name' | 'age' | 'currentBall' | 'clubId'>>,
+  ) => void;
   updateChildTheme: (theme: ChildTheme) => void;
   updateChildAvatar: (patch: Partial<AvatarConfig>) => void;
   buyAvatarItem: (itemId: string, cost: number, patch: Partial<AvatarConfig>) => boolean;
@@ -105,7 +182,9 @@ interface TennisStoreContextValue {
 
   // Challenges
   addChallenge: (
-    input: Pick<Challenge, 'title' | 'description' | 'category' | 'starsReward' | 'weekLabel'>,
+    input: Pick<Challenge, 'title' | 'description' | 'category' | 'starsReward' | 'weekLabel'> & {
+      templateId?: string;
+    },
   ) => void;
   deleteChallenge: (challengeId: string) => void;
   requestChallengeApproval: (challengeId: string) => void;
@@ -113,7 +192,11 @@ interface TennisStoreContextValue {
   declineChallengeRequest: (challengeId: string, feedback?: string) => void;
 
   // Rewards & redemptions
-  addReward: (input: Pick<RewardItem, 'title' | 'description' | 'emoji' | 'starCost'>) => void;
+  addReward: (
+    input: Pick<RewardItem, 'title' | 'description' | 'emoji' | 'starCost'> & {
+      templateId?: string;
+    },
+  ) => void;
   deleteReward: (rewardId: string) => void;
   requestRewardRedemption: (rewardId: string) => boolean;
   deliverRewardRedemption: (redemptionId: string) => void;
@@ -329,6 +412,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         name: row.name,
         age: row.age ?? 7,
         currentBall: (row.current_ball ?? 'rouge') as BallLevel,
+        clubId: row.club_id ?? undefined,
         starsBalance: row.stars_balance ?? 0,
         totalStarsEarned: row.total_stars_earned ?? 0,
         streakCount: row.streak_count ?? 0,
@@ -342,29 +426,38 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         createdAt: row.created_at,
       }));
 
-      setState((prev) => ({
-        familyName: familyRow.family_name || prev.familyName,
-        parentPin: familyRow.parent_pin || prev.parentPin,
-        tabletLocked: prev.tabletLocked,
-        activeChildId: mappedChildren.some((c) => c.id === prev.activeChildId)
-          ? prev.activeChildId
-          : mappedChildren[0].id,
-        children: mappedChildren,
-        sessions: (sessionsRes.data ?? []).map((r) => ({
-          id: r.id,
-          childId: r.child_id,
-          sessionDate: r.session_date,
-          sessionType: r.session_type,
-          durationMin: r.duration_min,
-          focusSkills: Array.isArray(r.focus_skills) ? r.focus_skills : [],
-          effortRating: r.effort_rating,
-          starsAwarded: r.stars_awarded,
-          coachNote: r.coach_note ?? '',
-          parentNote: r.parent_note ?? '',
-          childMood: r.child_mood ?? undefined,
-          childFavoriteMoment: r.child_favorite_moment ?? undefined,
-          createdAt: r.created_at,
-        })),
+      setState((prev) =>
+        normalizeFamilyState({
+          familyName: familyRow.family_name || prev.familyName,
+          parentPin: familyRow.parent_pin || prev.parentPin,
+          tabletLocked: prev.tabletLocked,
+          clubs: Array.isArray(familyRow.clubs) ? familyRow.clubs : prev.clubs,
+          studioChallenges: Array.isArray(familyRow.studio_challenges)
+            ? familyRow.studio_challenges
+            : prev.studioChallenges,
+          studioRewards: Array.isArray(familyRow.studio_rewards)
+            ? familyRow.studio_rewards
+            : prev.studioRewards,
+          activeChildId: mappedChildren.some((c) => c.id === prev.activeChildId)
+            ? prev.activeChildId
+            : mappedChildren[0].id,
+          children: mappedChildren,
+          sessions: (sessionsRes.data ?? []).map((r) => ({
+            id: r.id,
+            childId: r.child_id,
+            clubId: r.club_id ?? undefined,
+            sessionDate: r.session_date,
+            sessionType: r.session_type,
+            durationMin: r.duration_min,
+            focusSkills: Array.isArray(r.focus_skills) ? r.focus_skills : [],
+            effortRating: r.effort_rating,
+            starsAwarded: r.stars_awarded,
+            coachNote: r.coach_note ?? '',
+            parentNote: r.parent_note ?? '',
+            childMood: r.child_mood ?? undefined,
+            childFavoriteMoment: r.child_favorite_moment ?? undefined,
+            createdAt: r.created_at,
+          })),
         challenges: (challengesRes.data ?? []).map((r) => ({
           id: r.id,
           childId: r.child_id,
@@ -432,17 +525,18 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
           starsEarned: r.stars_earned,
           createdAt: r.created_at,
         })),
-        upcomingEvents: (eventsRes.data ?? []).map((r) => ({
-          id: r.id,
-          childId: r.child_id,
-          title: r.title,
-          eventDate: r.event_date,
-          eventTime: r.event_time ?? '',
-          eventType: r.event_type,
-          location: r.location ?? '',
-          notes: r.notes ?? '',
-        })),
-      }));
+          upcomingEvents: (eventsRes.data ?? []).map((r) => ({
+            id: r.id,
+            childId: r.child_id,
+            title: r.title,
+            eventDate: r.event_date,
+            eventTime: r.event_time ?? '',
+            eventType: r.event_type,
+            location: r.location ?? '',
+            notes: r.notes ?? '',
+          })),
+        }),
+      );
 
       setSyncStatus('synced');
     } catch (err) {
@@ -546,6 +640,11 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
   const activeChild = useMemo(() => {
     return state.children.find((c) => c.id === state.activeChildId) ?? state.children[0];
   }, [state.children, state.activeChildId]);
+
+  const activeChildClub = useMemo(() => {
+    if (!activeChild.clubId) return null;
+    return state.clubs.find((c) => c.id === activeChild.clubId) ?? null;
+  }, [state.clubs, activeChild.clubId]);
 
   const childSessions = useMemo(
     () =>
@@ -689,16 +788,275 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     });
   };
 
+  // Global Clubs catalog CRUD
+  const syncFamilyJsonb = (patch: Record<string, unknown>) => {
+    void syncCloudOp(async (sb) => {
+      if (familyDbIdRef.current) {
+        await sb.from('families').update(patch).eq('id', familyDbIdRef.current);
+      }
+    });
+  };
+
+  const addClub = (input: Omit<Club, 'id'>): Club => {
+    const newClub: Club = { ...input, id: uid('club') };
+    setState((prev) => {
+      const nextClubs = [...prev.clubs, newClub];
+      syncFamilyJsonb({ clubs: nextClubs });
+      return { ...prev, clubs: nextClubs };
+    });
+    return newClub;
+  };
+
+  const updateClub = (clubId: string, patch: Partial<Omit<Club, 'id'>>) => {
+    setState((prev) => {
+      const nextClubs = prev.clubs.map((c) => (c.id === clubId ? { ...c, ...patch } : c));
+      syncFamilyJsonb({ clubs: nextClubs });
+      return { ...prev, clubs: nextClubs };
+    });
+  };
+
+  const deleteClub = (clubId: string) => {
+    setState((prev) => {
+      const nextClubs = prev.clubs.filter((c) => c.id !== clubId);
+      const nextChildren = prev.children.map((ch) =>
+        ch.clubId === clubId ? { ...ch, clubId: undefined } : ch,
+      );
+      const nextSessions = prev.sessions.map((s) =>
+        s.clubId === clubId ? { ...s, clubId: undefined } : s,
+      );
+      syncFamilyJsonb({ clubs: nextClubs });
+      return {
+        ...prev,
+        clubs: nextClubs,
+        children: nextChildren,
+        sessions: nextSessions,
+      };
+    });
+  };
+
+  const assignChildClub = (childId: string, clubId?: string) => {
+    const club = clubId ? state.clubs.find((c) => c.id === clubId) : undefined;
+    const syncedClubInfo: ClubInfo = club
+      ? {
+          clubName: club.name,
+          coachName: club.coachName,
+          coachPhone: club.coachPhone,
+          coachEmail: club.coachEmail,
+          schedule: club.schedule,
+          courtSurface: club.courtSurface,
+        }
+      : {
+          clubName: '',
+          coachName: '',
+          coachPhone: '',
+          coachEmail: '',
+          schedule: '',
+          courtSurface: '',
+        };
+    patchChild(
+      childId,
+      (c) => ({ ...c, clubId: clubId || undefined, clubInfo: syncedClubInfo }),
+      { club_id: clubId || null, club_info: syncedClubInfo },
+    );
+  };
+
+  // Studio Challenges CRUD & Assignment
+  const addStudioChallenge = (input: Omit<StudioChallengeTemplate, 'id'>) => {
+    const tpl: StudioChallengeTemplate = { ...input, id: uid('tpl-ch') };
+    setState((prev) => {
+      const next = [tpl, ...prev.studioChallenges];
+      syncFamilyJsonb({ studio_challenges: next });
+      return { ...prev, studioChallenges: next };
+    });
+  };
+
+  const updateStudioChallenge = (
+    templateId: string,
+    patch: Partial<Omit<StudioChallengeTemplate, 'id'>>,
+  ) => {
+    setState((prev) => {
+      const next = prev.studioChallenges.map((t) =>
+        t.id === templateId ? { ...t, ...patch } : t,
+      );
+      syncFamilyJsonb({ studio_challenges: next });
+      return { ...prev, studioChallenges: next };
+    });
+  };
+
+  const deleteStudioChallenge = (templateId: string) => {
+    setState((prev) => {
+      const next = prev.studioChallenges.filter((t) => t.id !== templateId);
+      syncFamilyJsonb({ studio_challenges: next });
+      return { ...prev, studioChallenges: next };
+    });
+  };
+
+  const assignStudioChallengeToChildren = (templateId: string, childIds: string[]): number => {
+    const tpl = state.studioChallenges.find((t) => t.id === templateId);
+    if (!tpl || childIds.length === 0) return 0;
+
+    const now = new Date().toISOString();
+    const created: Challenge[] = [];
+
+    for (const cid of childIds) {
+      const alreadyActive = state.challenges.some(
+        (c) =>
+          c.childId === cid &&
+          c.status !== 'completed' &&
+          (c.templateId === templateId || c.title.toLowerCase() === tpl.title.toLowerCase()),
+      );
+      if (alreadyActive) continue;
+      created.push({
+        id: uid('chal'),
+        childId: cid,
+        templateId: tpl.id,
+        title: tpl.title,
+        description: tpl.description,
+        category: tpl.category,
+        starsReward: tpl.starsReward,
+        status: 'active',
+        weekLabel: 'Cette semaine',
+        createdAt: now,
+      });
+    }
+
+    if (created.length === 0) return 0;
+
+    setState((prev) => ({
+      ...prev,
+      challenges: [...created, ...prev.challenges],
+    }));
+
+    void syncCloudOp(async (sb) => {
+      await sb.from('challenges').insert(
+        created.map((ch) => ({
+          id: ch.id,
+          child_id: ch.childId,
+          title: ch.title,
+          description: ch.description,
+          category: ch.category,
+          stars_reward: ch.starsReward,
+          status: 'active',
+          week_label: ch.weekLabel,
+        })),
+      );
+    });
+
+    return created.length;
+  };
+
+  // Studio Rewards CRUD & Assignment
+  const addStudioReward = (input: Omit<StudioRewardTemplate, 'id'>) => {
+    const tpl: StudioRewardTemplate = { ...input, id: uid('tpl-rew') };
+    setState((prev) => {
+      const next = [tpl, ...prev.studioRewards];
+      syncFamilyJsonb({ studio_rewards: next });
+      return { ...prev, studioRewards: next };
+    });
+  };
+
+  const updateStudioReward = (
+    templateId: string,
+    patch: Partial<Omit<StudioRewardTemplate, 'id'>>,
+  ) => {
+    setState((prev) => {
+      const next = prev.studioRewards.map((t) =>
+        t.id === templateId ? { ...t, ...patch } : t,
+      );
+      syncFamilyJsonb({ studio_rewards: next });
+      return { ...prev, studioRewards: next };
+    });
+  };
+
+  const deleteStudioReward = (templateId: string) => {
+    setState((prev) => {
+      const next = prev.studioRewards.filter((t) => t.id !== templateId);
+      syncFamilyJsonb({ studio_rewards: next });
+      return { ...prev, studioRewards: next };
+    });
+  };
+
+  const assignStudioRewardToChildren = (templateId: string, childIds: string[]): number => {
+    const tpl = state.studioRewards.find((t) => t.id === templateId);
+    if (!tpl || childIds.length === 0) return 0;
+
+    const created: RewardItem[] = [];
+
+    for (const cid of childIds) {
+      const alreadyExists = state.rewards.some(
+        (r) =>
+          r.childId === cid &&
+          r.active &&
+          (r.templateId === templateId || r.title.toLowerCase() === tpl.title.toLowerCase()),
+      );
+      if (alreadyExists) continue;
+      created.push({
+        id: uid('rew'),
+        childId: cid,
+        templateId: tpl.id,
+        title: tpl.title,
+        description: tpl.description,
+        emoji: tpl.emoji,
+        starCost: tpl.starCost,
+        active: true,
+      });
+    }
+
+    if (created.length === 0) return 0;
+
+    setState((prev) => ({
+      ...prev,
+      rewards: [...prev.rewards, ...created],
+    }));
+
+    void syncCloudOp(async (sb) => {
+      await sb.from('rewards').insert(
+        created.map((r) => ({
+          id: r.id,
+          child_id: r.childId,
+          title: r.title,
+          description: r.description,
+          emoji: r.emoji,
+          star_cost: r.starCost,
+          active: true,
+        })),
+      );
+    });
+
+    return created.length;
+  };
+
   // Multi-child creation
-  const addChild = (input: { name: string; age: number; currentBall: BallLevel }) => {
+  const addChild = (input: {
+    name: string;
+    age: number;
+    currentBall: BallLevel;
+    clubId?: string;
+  }) => {
     const template = createInitialDemoState().children[0];
     const newId = uid('child');
+    const assignedClubId = input.clubId || state.clubs[0]?.id;
+    const assignedClub = assignedClubId
+      ? state.clubs.find((c) => c.id === assignedClubId)
+      : undefined;
+
     const newChild: ChildProfile = {
       ...template,
       id: newId,
       name: input.name.trim(),
       age: input.age,
       currentBall: input.currentBall,
+      clubId: assignedClubId,
+      clubInfo: assignedClub
+        ? {
+            clubName: assignedClub.name,
+            coachName: assignedClub.coachName,
+            coachPhone: assignedClub.coachPhone,
+            coachEmail: assignedClub.coachEmail,
+            schedule: assignedClub.schedule,
+            courtSurface: assignedClub.courtSurface,
+          }
+        : template.clubInfo,
       starsBalance: 15,
       totalStarsEarned: 15,
       streakCount: 0,
@@ -718,6 +1076,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         name: newChild.name,
         age: newChild.age,
         current_ball: newChild.currentBall,
+        club_id: newChild.clubId ?? null,
         stars_balance: newChild.starsBalance,
         total_stars_earned: newChild.totalStarsEarned,
         streak_count: 0,
@@ -732,11 +1091,14 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     });
   };
 
-  const updateChildProfile = (patch: Partial<Pick<ChildProfile, 'name' | 'age' | 'currentBall'>>) => {
+  const updateChildProfile = (
+    patch: Partial<Pick<ChildProfile, 'name' | 'age' | 'currentBall' | 'clubId'>>,
+  ) => {
     const dbPatch: Record<string, unknown> = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.age !== undefined) dbPatch.age = patch.age;
     if (patch.currentBall !== undefined) dbPatch.current_ball = patch.currentBall;
+    if (patch.clubId !== undefined) dbPatch.club_id = patch.clubId || null;
     patchChild(activeChild.id, (c) => ({ ...c, ...patch }), dbPatch);
   };
 
@@ -853,6 +1215,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       await sb.from('sessions').insert({
         id: newSession.id,
         child_id: activeChild.id,
+        club_id: newSession.clubId ?? null,
         session_date: newSession.sessionDate,
         session_type: newSession.sessionType,
         duration_min: newSession.durationMin,
@@ -1360,7 +1723,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       if (!parsed || !Array.isArray(parsed.children) || parsed.children.length === 0) {
         return { ok: false, error: 'Fichier JSON invalide (aucun profil enfant trouvé).' };
       }
-      setState(parsed);
+      setState(normalizeFamilyState(parsed));
       return { ok: true };
     } catch {
       return { ok: false, error: 'Format JSON illisible.' };
@@ -1374,6 +1737,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
   const value: TennisStoreContextValue = {
     state,
     activeChild,
+    activeChildClub,
     childSessions,
     childChallenges,
     childTournaments,
@@ -1397,6 +1761,18 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     setTabletLocked,
     updateParentPin,
     updateFamilyName,
+    addClub,
+    updateClub,
+    deleteClub,
+    assignChildClub,
+    addStudioChallenge,
+    updateStudioChallenge,
+    deleteStudioChallenge,
+    assignStudioChallengeToChildren,
+    addStudioReward,
+    updateStudioReward,
+    deleteStudioReward,
+    assignStudioRewardToChildren,
     addChild,
     updateChildProfile,
     updateChildTheme,

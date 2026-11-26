@@ -12,6 +12,7 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  Wand2,
 } from 'lucide-react';
 import { useTennisStore } from '../../lib/store';
 import { ParentChallenges } from './ParentChallenges';
@@ -20,6 +21,7 @@ import { ParentNotebook } from './ParentNotebook';
 import { ParentSessions } from './ParentSessions';
 import { ParentSettings } from './ParentSettings';
 import { ParentSkills } from './ParentSkills';
+import { ParentStudio } from './ParentStudio';
 import { ParentTournaments } from './ParentTournaments';
 
 type ParentTab =
@@ -29,6 +31,7 @@ type ParentTab =
   | 'challenges'
   | 'tournaments'
   | 'notebook'
+  | 'studio'
   | 'settings';
 
 interface ParentLayoutProps {
@@ -53,7 +56,7 @@ export function ParentLayout({
   const [activeTab, setActiveTab] = useState<ParentTab>('dashboard');
 
   const childNavItems: {
-    id: Exclude<ParentTab, 'settings'>;
+    id: Exclude<ParentTab, 'studio' | 'settings'>;
     label: string;
     shortLabel: string;
     icon: typeof LayoutDashboard;
@@ -112,7 +115,7 @@ export function ParentLayout({
           </select>
         </div>
 
-        {/* Nav Links — Separated into Child-specific & General */}
+        {/* Nav Links — Separated into Child-specific & General (Studio -> Settings) */}
         <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation parent">
           <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-200/75">
             Suivi de {activeChild.name}
@@ -150,18 +153,33 @@ export function ParentLayout({
             <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-200/75">
               Famille & Application
             </p>
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
-                activeTab === 'settings'
-                  ? 'bg-[#C85A32] text-white shadow-sm'
-                  : 'text-emerald-100 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <Settings className="h-4 w-4 shrink-0" />
-              <span>Réglages généraux</span>
-            </button>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('studio')}
+                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
+                  activeTab === 'studio'
+                    ? 'bg-[#C85A32] text-white shadow-sm'
+                    : 'text-emerald-100 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Wand2 className="h-4 w-4 shrink-0" />
+                <span className="truncate">Studio Défis & Récomp.</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('settings')}
+                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
+                  activeTab === 'settings'
+                    ? 'bg-[#C85A32] text-white shadow-sm'
+                    : 'text-emerald-100 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span>Réglages généraux</span>
+              </button>
+            </div>
           </div>
         </nav>
 
@@ -232,11 +250,21 @@ export function ParentLayout({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('studio')}
+            className={`rounded-lg p-2 text-white ${
+              activeTab === 'studio' ? 'bg-[#C85A32]' : 'bg-white/10'
+            }`}
+            title="Studio Défis & Récompenses"
+          >
+            <Wand2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('settings')}
             className={`rounded-lg p-2 text-white ${
               activeTab === 'settings' ? 'bg-[#C85A32]' : 'bg-white/10'
             }`}
-            title="Réglages généraux (Famille & App)"
+            title="Réglages généraux (Clubs, Famille & App)"
           >
             <Settings className="h-4 w-4" />
           </button>
@@ -260,10 +288,18 @@ export function ParentLayout({
           />
         )}
         {activeTab === 'skills' && <ParentSkills key={activeChild.id} />}
-        {activeTab === 'sessions' && <ParentSessions />}
-        {activeTab === 'challenges' && <ParentChallenges />}
+        {activeTab === 'sessions' && <ParentSessions key={activeChild.id} />}
+        {activeTab === 'challenges' && (
+          <ParentChallenges onOpenStudio={() => setActiveTab('studio')} />
+        )}
         {activeTab === 'tournaments' && <ParentTournaments />}
-        {activeTab === 'notebook' && <ParentNotebook key={activeChild.id} />}
+        {activeTab === 'notebook' && (
+          <ParentNotebook
+            key={activeChild.id}
+            onOpenSettings={() => setActiveTab('settings')}
+          />
+        )}
+        {activeTab === 'studio' && <ParentStudio />}
         {activeTab === 'settings' && <ParentSettings onOpenAuthModal={onOpenAuthModal} />}
       </main>
 

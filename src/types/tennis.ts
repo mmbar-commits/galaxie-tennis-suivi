@@ -35,6 +35,33 @@ export interface ClubInfo {
   courtSurface: string;
 }
 
+export interface Club {
+  id: string;
+  name: string;
+  coachName: string;
+  coachPhone: string;
+  coachEmail: string;
+  schedule: string;
+  courtSurface: string;
+  address: string;
+}
+
+export interface StudioChallengeTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: 'technique' | 'echanges' | 'service' | 'fairplay' | 'jeu';
+  starsReward: number;
+}
+
+export interface StudioRewardTemplate {
+  id: string;
+  title: string;
+  description: string;
+  emoji: string;
+  starCost: number;
+}
+
 export interface EquipmentInfo {
   racketModel: string;
   racketSize: string;
@@ -54,6 +81,7 @@ export interface ChildProfile {
   name: string;
   age: number;
   currentBall: BallLevel;
+  clubId?: string;
   starsBalance: number;
   totalStarsEarned: number;
   streakCount: number;
@@ -70,6 +98,7 @@ export interface ChildProfile {
 export interface TrainingSession {
   id: string;
   childId: string;
+  clubId?: string;
   sessionDate: string; // YYYY-MM-DD
   sessionType: SessionType;
   durationMin: number;
@@ -86,6 +115,7 @@ export interface TrainingSession {
 export interface Challenge {
   id: string;
   childId: string;
+  templateId?: string;
   title: string;
   description: string;
   category: 'technique' | 'echanges' | 'service' | 'fairplay' | 'jeu';
@@ -114,6 +144,7 @@ export interface TournamentEntry {
 export interface RewardItem {
   id: string;
   childId: string;
+  templateId?: string;
   title: string;
   description: string;
   emoji: string;
@@ -172,6 +203,9 @@ export interface FamilyState {
   parentPin: string;
   tabletLocked: boolean;
   activeChildId: string;
+  clubs: Club[];
+  studioChallenges: StudioChallengeTemplate[];
+  studioRewards: StudioRewardTemplate[];
   children: ChildProfile[];
   sessions: TrainingSession[];
   challenges: Challenge[];

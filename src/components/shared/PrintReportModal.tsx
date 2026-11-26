@@ -18,6 +18,7 @@ export function PrintReportModal({ onClose }: PrintReportModalProps) {
   const [printedDate] = useState(() => new Date().toLocaleDateString('fr-FR'));
   const {
     activeChild,
+    activeChildClub,
     childSessions,
     childChallenges,
     childTournaments,
@@ -92,8 +93,9 @@ export function PrintReportModal({ onClose }: PrintReportModalProps) {
                   {activeChild.name}, {activeChild.age} ans
                 </h1>
                 <p className="mt-0.5 text-sm text-[#5C6660]">
-                  {activeChild.clubInfo.clubName || 'Club de Tennis'} •{' '}
-                  {activeChild.clubInfo.coachName || 'Coach'} • Édité le {printedDate}
+                  {activeChildClub?.name || activeChild.clubInfo.clubName || 'Club de Tennis'} •{' '}
+                  {activeChildClub?.coachName || activeChild.clubInfo.coachName || 'Coach'} • Édité
+                  le {printedDate}
                 </p>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock, Plus, Star, Trash2 } from 'lucide-react';
+import { Building2, Clock, Plus, Star, Trash2 } from 'lucide-react';
 import {
   CHILD_MOOD_OPTIONS,
   SESSION_TYPE_LABELS,
@@ -12,10 +12,11 @@ import type { SessionType, SkillKey } from '../../types/tennis';
 const DURATIONS = [30, 45, 60, 90];
 
 export function ParentSessions() {
-  const { activeChild, childSessions, addSession, deleteSession } = useTennisStore();
+  const { state, activeChild, childSessions, addSession, deleteSession } = useTennisStore();
 
   const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [sessionType, setSessionType] = useState<SessionType>('cours_club');
+  const [clubId, setClubId] = useState<string>(activeChild.clubId ?? '');
   const [durationMin, setDurationMin] = useState(60);
   const [focusSkills, setFocusSkills] = useState<SkillKey[]>(['coup_droit']);
   const [effortRating, setEffortRating] = useState(5);
@@ -35,6 +36,7 @@ export function ParentSessions() {
     addSession({
       sessionDate,
       sessionType,
+      clubId: clubId || undefined,
       durationMin,
       focusSkills,
       effortRating,
@@ -71,28 +73,51 @@ export function ParentSessions() {
         </h2>
 
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Type */}
-          <div>
-            <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">Type de séance</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((type) => {
-                const info = SESSION_TYPE_LABELS[type];
-                const active = sessionType === type;
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setSessionType(type)}
-                    className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition ${
-                      active
-                        ? 'border-[#C85A32] bg-[#FDF0EB] text-[#C85A32]'
-                        : 'border-[#E8DDD0] bg-[#FAF6F0] text-[#1F2421] hover:bg-white'
-                    }`}
-                  >
-                    {info.emoji} {info.label}
-                  </button>
-                );
-              })}
+          {/* Type & Club */}
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">
+                Type de séance
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(SESSION_TYPE_LABELS) as SessionType[]).map((type) => {
+                  const info = SESSION_TYPE_LABELS[type];
+                  const active = sessionType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setSessionType(type)}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition ${
+                        active
+                          ? 'border-[#C85A32] bg-[#FDF0EB] text-[#C85A32]'
+                          : 'border-[#E8DDD0] bg-[#FAF6F0] text-[#1F2421] hover:bg-white'
+                      }`}
+                    >
+                      {info.emoji} {info.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">
+                Club / Lieu de l’entraînement
+              </label>
+              <select
+                value={clubId}
+                onChange={(e) => setClubId(e.target.value)}
+                className="w-full rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm font-semibold text-[#1F2421] outline-none focus:border-[#C85A32]"
+              >
+                <option value="">Hors club (jardin, vacances, libre...)</option>
+                {state.clubs.map((cl) => (
+                  <option key={cl.id} value={cl.id}>
+                    🏟️ {cl.name}
+                    {cl.coachName ? ` — ${cl.coachName}` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -116,7 +141,7 @@ export function ParentSessions() {
                     key={d}
                     type="button"
                     onClick={() => setDurationMin(d)}
-                    className={`flex-1 rounded-xl border py-1.5 text-xs font-bold transition ${
+                    className={`flex-1 rounded-xl border py-2 text-xs font-bold transition ${
                       durationMin === d
                         ? 'border-[#1E4D3B] bg-[#1E4D3B] text-white'
                         : 'border-[#E8DDD0] bg-[#FAF6F0] text-[#1F2421]'
@@ -255,6 +280,7 @@ export function ParentSessions() {
         {childSessions.map((s) => {
           const meta = SESSION_TYPE_LABELS[s.sessionType];
           const moodObj = CHILD_MOOD_OPTIONS.find((m) => m.id === s.childMood);
+          const sessionClub = s.clubId ? state.clubs.find((c) => c.id === s.clubId) : undefined;
           return (
             <article key={s.id} className="parent-card p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -273,6 +299,11 @@ export function ParentSessions() {
                     <span className="inline-flex items-center gap-1 text-xs text-[#5C6660]">
                       <Clock className="h-3.5 w-3.5" /> {s.durationMin} min
                     </span>
+                    {sessionClub && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#F4EDE3] px-2.5 py-0.5 text-[11px] font-semibold text-[#1E4D3B]">
+                        <Building2 className="h-3 w-3" /> {sessionClub.name}
+                      </span>
+                    )}
                   </div>
 
                   {/* Skills tags */}
