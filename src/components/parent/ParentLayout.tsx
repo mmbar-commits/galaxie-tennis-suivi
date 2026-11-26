@@ -3,6 +3,7 @@ import {
   Award,
   BookOpen,
   CalendarDays,
+  ClipboardCheck,
   Cloud,
   CloudOff,
   FileText,
@@ -36,12 +37,14 @@ type ParentTab =
 
 interface ParentLayoutProps {
   onSwitchToChild: (lockTablet?: boolean) => void;
+  onSwitchToCoach: () => void;
   onOpenPrintReport: () => void;
   onOpenAuthModal: () => void;
 }
 
 export function ParentLayout({
   onSwitchToChild,
+  onSwitchToCoach,
   onOpenPrintReport,
   onOpenAuthModal,
 }: ParentLayoutProps) {
@@ -69,7 +72,7 @@ export function ParentLayout({
       icon: LayoutDashboard,
       badge: pendingApprovalCount,
     },
-    { id: 'skills', label: 'Galaxie & Technique', shortLabel: 'Galaxie', icon: TrendingUp },
+    { id: 'skills', label: 'Galaxie & TTCA', shortLabel: 'TTCA', icon: TrendingUp },
     { id: 'sessions', label: 'Séances (30s)', shortLabel: 'Séances', icon: CalendarDays },
     { id: 'challenges', label: 'Défis & Boutique', shortLabel: 'Défis', icon: Target },
     { id: 'tournaments', label: 'Plateaux & Photos', shortLabel: 'Plateaux', icon: Award },
@@ -205,6 +208,15 @@ export function ParentLayout({
 
           <button
             type="button"
+            onClick={onSwitchToCoach}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-xs font-extrabold text-[#1E4D3B] shadow-xs transition hover:bg-emerald-50"
+          >
+            <ClipboardCheck className="h-4 w-4 text-[#C85A32]" />
+            Ouvrir Vue Coach (Acquis)
+          </button>
+
+          <button
+            type="button"
             onClick={() => onSwitchToChild(false)}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F4B942] px-3.5 py-2.5 text-xs font-extrabold text-[#1F2421] shadow-xs transition hover:bg-[#E5AA33]"
           >
@@ -224,7 +236,7 @@ export function ParentLayout({
       </aside>
 
       {/* Mobile Top Bar */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#E8DDD0] bg-[#1E4D3B] px-4 py-3 text-white lg:hidden">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#E8DDD0] bg-[#1E4D3B] px-3 py-3 text-white lg:hidden">
         <div className="flex items-center gap-2">
           <img src="./app-icon.jpg" alt="" className="h-8 w-8 rounded-lg object-cover" />
           <select
@@ -239,7 +251,7 @@ export function ParentLayout({
             ))}
           </select>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={onOpenPrintReport}
@@ -247,6 +259,14 @@ export function ParentLayout({
             title="Fiche Bilan PDF"
           >
             <FileText className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onSwitchToCoach}
+            className="rounded-lg bg-white p-2 text-[#1E4D3B]"
+            title="Ouvrir Vue Coach (Validation acquis)"
+          >
+            <ClipboardCheck className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -264,7 +284,7 @@ export function ParentLayout({
             className={`rounded-lg p-2 text-white ${
               activeTab === 'settings' ? 'bg-[#C85A32]' : 'bg-white/10'
             }`}
-            title="Réglages généraux (Clubs, Famille & App)"
+            title="Réglages généraux"
           >
             <Settings className="h-4 w-4" />
           </button>
@@ -287,7 +307,9 @@ export function ParentLayout({
             onOpenPrintReport={onOpenPrintReport}
           />
         )}
-        {activeTab === 'skills' && <ParentSkills key={activeChild.id} />}
+        {activeTab === 'skills' && (
+          <ParentSkills key={activeChild.id} onOpenCoachMode={onSwitchToCoach} />
+        )}
         {activeTab === 'sessions' && <ParentSessions key={activeChild.id} />}
         {activeTab === 'challenges' && (
           <ParentChallenges onOpenStudio={() => setActiveTab('studio')} />

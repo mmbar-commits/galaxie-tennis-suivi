@@ -3,6 +3,7 @@ import { Delete, Lock, X } from 'lucide-react';
 
 interface PinModalProps {
   expectedPin: string;
+  defaultDemoPin?: string;
   title?: string;
   subtitle?: string;
   onSuccess: () => void;
@@ -11,6 +12,7 @@ interface PinModalProps {
 
 export function PinModal({
   expectedPin,
+  defaultDemoPin = '1234',
   title = 'Accès Espace Parent',
   subtitle = 'Saisis le code PIN à 4 chiffres pour ouvrir la gestion.',
   onSuccess,
@@ -87,9 +89,9 @@ export function PinModal({
           </p>
         )}
 
-        {expectedPin === '1234' && (
+        {expectedPin === defaultDemoPin && (
           <p className="mb-3 rounded-xl bg-[#FEF7E6] px-3 py-1.5 text-center text-xs text-[#92620A]">
-            Code démo par défaut : <strong>1234</strong> (modifiable dans Réglages)
+            Code démo par défaut : <strong>{defaultDemoPin}</strong> (modifiable dans Réglages)
           </p>
         )}
 

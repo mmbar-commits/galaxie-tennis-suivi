@@ -4,6 +4,7 @@ import {
   CHILD_MOOD_OPTIONS,
   FAVORITE_MOMENT_CHIPS,
   GALAXIE_LEVELS,
+  TTCA_AXES,
 } from '../../data/galaxieCatalog';
 import { fireStarCelebration } from '../../lib/confetti';
 import { useTennisStore } from '../../lib/store';
@@ -273,28 +274,69 @@ export function ChildGalaxyMap({ onNavigate }: ChildGalaxyMapProps) {
 
           <div className="space-y-2.5">
             {selectedPlanetInfo.milestones.map((m) => {
-              const done = activeChild.milestonesCompleted.includes(m.id);
+              const ev = activeChild.milestoneEvaluations?.[m.id];
+              const status =
+                ev?.status ??
+                (activeChild.milestonesCompleted.includes(m.id) ? 'acquis' : 'non_evalue');
+              const isAcquis = status === 'acquis';
+              const isEnCours = status === 'en_cours';
+              const axisInfo = TTCA_AXES.find((a) => a.id === m.axis);
+
               return (
                 <div
                   key={m.id}
                   className={`flex items-center gap-3 rounded-2xl px-4 py-3 transition ${
-                    done ? 'bg-white shadow-xs' : 'bg-white/60'
+                    isAcquis
+                      ? 'bg-white shadow-xs'
+                      : isEnCours
+                        ? 'bg-[#FFFDF5] ring-1 ring-[#F4D38B]'
+                        : 'bg-white/60'
                   }`}
                 >
                   <div
                     className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg ${
-                      done ? 'bg-[#FFF3CC]' : 'bg-[#EFEAE4]'
+                      isAcquis
+                        ? 'bg-[#FFF3CC]'
+                        : isEnCours
+                          ? 'bg-[#FEF3C7]'
+                          : 'bg-[#EFEAE4]'
                     }`}
                   >
-                    {done ? '⭐' : '🔒'}
+                    {isAcquis ? '⭐' : isEnCours ? '🌱' : '🔒'}
                   </div>
-                  <p
-                    className={`text-sm font-bold ${
-                      done ? 'text-[#2C211E]' : 'text-[#73697E]'
-                    }`}
-                  >
-                    {m.kidLabel}
-                  </p>
+                  <div className="flex-1">
+                    <p
+                      className={`text-sm font-bold ${
+                        isAcquis
+                          ? 'text-[#2C211E]'
+                          : isEnCours
+                            ? 'text-[#7C4D06]'
+                            : 'text-[#73697E]'
+                      }`}
+                    >
+                      {m.kidLabel}
+                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {axisInfo && (
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-extrabold"
+                          style={{ backgroundColor: axisInfo.bgSoft, color: axisInfo.color }}
+                        >
+                          {axisInfo.emoji} {axisInfo.shortLabel}
+                        </span>
+                      )}
+                      {isEnCours && (
+                        <span className="rounded-full bg-[#FEF3C7] px-2 py-0.5 text-[10px] font-extrabold text-[#9A6700]">
+                          🌱 En cours !
+                        </span>
+                      )}
+                      {isAcquis && ev?.validatedBy === 'coach' && (
+                        <span className="rounded-full bg-[#E9F3EE] px-2 py-0.5 text-[10px] font-extrabold text-[#1E4D3B]">
+                          🏅 Validé par {ev.validatorName || 'le Coach'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}

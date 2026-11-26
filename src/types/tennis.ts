@@ -2,7 +2,11 @@ export type BallLevel = 'blanc' | 'violet' | 'rouge' | 'orange' | 'vert';
 
 export type ChildTheme = 'terre-battue' | 'galaxie' | 'gazon';
 
-export type AppMode = 'child' | 'parent';
+export type AppMode = 'child' | 'parent' | 'coach';
+
+export type TtcaAxis = 'technique' | 'tactique' | 'comportement' | 'arbitrage';
+
+export type AcquisitionStatus = 'non_evalue' | 'en_cours' | 'acquis';
 
 export type SkillKey =
   | 'coup_droit'
@@ -70,9 +74,20 @@ export interface EquipmentInfo {
   notes: string;
 }
 
+export interface MilestoneEvaluation {
+  status: AcquisitionStatus;
+  validatedBy?: 'coach' | 'parent';
+  validatorName?: string;
+  note?: string;
+  updatedAt: string;
+}
+
 export interface SkillEntry {
-  level: number; // 1 to 5
+  status: AcquisitionStatus;
+  level: number; // Derived numeric helper (1=non_evalue, 3=en_cours, 5=acquis) for visual radar
   note: string;
+  validatedBy?: 'coach' | 'parent';
+  validatorName?: string;
   updatedAt: string;
 }
 
@@ -89,6 +104,7 @@ export interface ChildProfile {
   avatarConfig: AvatarConfig;
   unlockedItems: string[];
   milestonesCompleted: string[];
+  milestoneEvaluations: Record<string, MilestoneEvaluation>;
   skillLevels: Record<SkillKey, SkillEntry>;
   clubInfo: ClubInfo;
   equipmentInfo: EquipmentInfo;
@@ -201,6 +217,7 @@ export interface UpcomingEvent {
 export interface FamilyState {
   familyName: string;
   parentPin: string;
+  coachPin: string;
   tabletLocked: boolean;
   activeChildId: string;
   clubs: Club[];

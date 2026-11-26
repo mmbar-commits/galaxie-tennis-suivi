@@ -1,5 +1,5 @@
-import { SKILL_CATALOG } from '../../data/galaxieCatalog';
-import type { SkillEntry, SkillKey } from '../../types/tennis';
+import { ACQUISITION_STATUS_META, SKILL_CATALOG } from '../../data/galaxieCatalog';
+import type { AcquisitionStatus, SkillEntry, SkillKey } from '../../types/tennis';
 
 interface SkillRadarChartProps {
   skills: Record<SkillKey, SkillEntry>;
@@ -9,25 +9,36 @@ interface SkillRadarChartProps {
 export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
   const cx = size / 2;
   const cy = size / 2;
-  const radius = size * 0.34;
+  const radius = size * 0.33;
   const axes = SKILL_CATALOG;
   const count = axes.length;
 
-  const pointAt = (index: number, levelRatio: number) => {
+  const pointAt = (index: number, ratio: number) => {
     const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
     return {
-      x: cx + Math.cos(angle) * radius * levelRatio,
-      y: cy + Math.sin(angle) * radius * levelRatio,
+      x: cx + Math.cos(angle) * radius * ratio,
+      y: cy + Math.sin(angle) * radius * ratio,
     };
   };
 
-  const rings = [0.2, 0.4, 0.6, 0.8, 1];
+  // 3 concentric rings matching: À travailler (0.33), En cours (0.66), Acquis (1.0)
+  const rings = [0.33, 0.66, 1];
 
-  const dataPoints = axes.map((axis, idx) => {
-    const lvl = Math.max(0.5, Math.min(5, skills[axis.key]?.level ?? 1));
-    return pointAt(idx, lvl / 5);
-  });
+  const getStatus = (key: SkillKey): AcquisitionStatus => {
+    const entry = skills[key];
+    if (entry?.status) return entry.status;
+    if ((entry?.level ?? 1) >= 4) return 'acquis';
+    if ((entry?.level ?? 1) >= 2) return 'en_cours';
+    return 'non_evalue';
+  };
 
+  const statusRatio: Record<AcquisitionStatus, number> = {
+    non_evalue: 0.25,
+    en_cours: 0.65,
+    acquis: 1,
+  };
+
+  const dataPoints = axes.map((axis, idx) => pointAt(idx, statusRatio[getStatus(axis.key)]));
   const polygonPath = dataPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 
   return (
@@ -37,9 +48,8 @@ export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
       viewBox={`0 0 ${size} ${size}`}
       className="mx-auto block select-none"
       role="img"
-      aria-label="Radar des 6 compétences tennis"
+      aria-label="Radar des acquis techniques (À travailler, En cours, Acquis)"
     >
-      {/* Concentric pentagon/hexagon rings */}
       {rings.map((r) => {
         const pts = axes
           .map((_, idx) => {
@@ -51,14 +61,13 @@ export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
           <polygon
             key={r}
             points={pts}
-            fill={r === 1 ? 'rgba(200, 90, 50, 0.04)' : 'none'}
+            fill={r === 1 ? 'rgba(30, 77, 59, 0.04)' : 'none'}
             stroke="#E5D9CC"
             strokeWidth={r === 1 ? 1.5 : 1}
           />
         );
       })}
 
-      {/* Axis spokes */}
       {axes.map((axis, idx) => {
         const outer = pointAt(idx, 1);
         return (
@@ -74,32 +83,35 @@ export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
         );
       })}
 
-      {/* Filled skill polygon */}
       <polygon
         points={polygonPath}
-        fill="rgba(200, 90, 50, 0.22)"
-        stroke="#C85A32"
+        fill="rgba(30, 77, 59, 0.20)"
+        stroke="#1E4D3B"
         strokeWidth="2.5"
         strokeLinejoin="round"
       />
 
-      {/* Vertex dots */}
-      {dataPoints.map((p, idx) => (
-        <circle
-          key={axes[idx].key}
-          cx={p.x}
-          cy={p.y}
-          r="4.5"
-          fill="#1E4D3B"
-          stroke="#FFFFFF"
-          strokeWidth="2"
-        />
-      ))}
+      {dataPoints.map((p, idx) => {
+        const st = getStatus(axes[idx].key);
+        const dotColor =
+          st === 'acquis' ? '#1E4D3B' : st === 'en_cours' ? '#D99B26' : '#94A3B8';
+        return (
+          <circle
+            key={axes[idx].key}
+            cx={p.x}
+            cy={p.y}
+            r="4.5"
+            fill={dotColor}
+            stroke="#FFFFFF"
+            strokeWidth="2"
+          />
+        );
+      })}
 
-      {/* Labels */}
       {axes.map((axis, idx) => {
-        const labelPos = pointAt(idx, 1.27);
-        const lvl = skills[axis.key]?.level ?? 1;
+        const labelPos = pointAt(idx, 1.3);
+        const st = getStatus(axis.key);
+        const meta = ACQUISITION_STATUS_META[st];
         return (
           <g key={axis.key}>
             <text
@@ -107,7 +119,7 @@ export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
               y={labelPos.y - 4}
               textAnchor="middle"
               dominantBaseline="middle"
-              fontSize="11"
+              fontSize="10.5"
               fontWeight="700"
               fill="#1F2421"
             >
@@ -118,11 +130,11 @@ export function SkillRadarChart({ skills, size = 250 }: SkillRadarChartProps) {
               y={labelPos.y + 10}
               textAnchor="middle"
               dominantBaseline="middle"
-              fontSize="10"
-              fontWeight="600"
-              fill="#C85A32"
+              fontSize="9.5"
+              fontWeight="700"
+              fill={meta.text}
             >
-              {lvl}/5
+              {meta.shortLabel}
             </text>
           </g>
         );

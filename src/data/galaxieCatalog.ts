@@ -1,7 +1,16 @@
-import type { BallLevel, ChildMood, SessionType, SkillKey } from '../types/tennis';
+import type {
+  AcquisitionStatus,
+  BallLevel,
+  ChildMood,
+  SessionType,
+  SkillKey,
+  TtcaAxis,
+} from '../types/tennis';
 
 export interface GalaxieMilestone {
   id: string;
+  axis: TtcaAxis;
+  subGroup?: string;
   label: string;
   kidLabel: string;
 }
@@ -12,6 +21,7 @@ export interface BallLevelInfo {
   planetName: string;
   ageHint: string;
   courtSize: string;
+  racketHint: string;
   color: string;
   bgSoft: string;
   ringColor: string;
@@ -20,38 +30,155 @@ export interface BallLevelInfo {
   milestones: GalaxieMilestone[];
 }
 
+export const TTCA_AXES: {
+  id: TtcaAxis;
+  letter: string;
+  label: string;
+  shortLabel: string;
+  emoji: string;
+  color: string;
+  bgSoft: string;
+  description: string;
+}[] = [
+  {
+    id: 'technique',
+    letter: 'T',
+    label: 'Technique',
+    shortLabel: 'Technique',
+    emoji: '🎾',
+    color: '#C85A32',
+    bgSoft: '#FDF0EB',
+    description: 'Prises, service, coup droit, revers, volée et jeu de jambes.',
+  },
+  {
+    id: 'tactique',
+    letter: 'T',
+    label: 'Tactique',
+    shortLabel: 'Tactique',
+    emoji: '🧠',
+    color: '#1E4D3B',
+    bgSoft: '#E9F3EE',
+    description: 'Placement, déplacement de l’adversaire, choix offensifs et défensifs.',
+  },
+  {
+    id: 'comportement',
+    letter: 'C',
+    label: 'Comportement',
+    shortLabel: 'Comportement',
+    emoji: '🤝',
+    color: '#D97706',
+    bgSoft: '#FEF7E6',
+    description: 'Fair-play, respect de l’adversaire, gestion des émotions et attitude.',
+  },
+  {
+    id: 'arbitrage',
+    letter: 'A',
+    label: 'Arbitrage',
+    shortLabel: 'Arbitrage',
+    emoji: '⚖️',
+    color: '#3B73ED',
+    bgSoft: '#EEF4FF',
+    description: 'Comptage des points, annonce des fautes et autonomie sur les règles.',
+  },
+];
+
+export const ACQUISITION_STATUS_META: Record<
+  AcquisitionStatus,
+  {
+    label: string;
+    shortLabel: string;
+    emoji: string;
+    bg: string;
+    text: string;
+    border: string;
+    numericLevel: number;
+  }
+> = {
+  non_evalue: {
+    label: 'À travailler',
+    shortLabel: 'À travailler',
+    emoji: '⚪',
+    bg: '#F4F2EF',
+    text: '#6B6660',
+    border: '#E2DBD2',
+    numericLevel: 1,
+  },
+  en_cours: {
+    label: 'En cours d’acquisition',
+    shortLabel: 'En cours',
+    emoji: '🟡',
+    bg: '#FEF7E6',
+    text: '#9A6700',
+    border: '#F2CE7E',
+    numericLevel: 3,
+  },
+  acquis: {
+    label: 'Acquis',
+    shortLabel: 'Acquis',
+    emoji: '✅',
+    bg: '#E9F3EE',
+    text: '#1E4D3B',
+    border: '#8AC5A8',
+    numericLevel: 5,
+  },
+};
+
+/**
+ * Référentiel officiel FFT Galaxie Tennis (Cahier de l'Enseignant FFT & Passeport Galaxie Tennis)
+ * Critères de passage T(T)CA : Technique, Tactique, Comportement, Arbitrage.
+ */
 export const GALAXIE_LEVELS: BallLevelInfo[] = [
   {
     id: 'blanc',
     name: 'Niveau Blanc',
     planetName: 'Planète Nuage Blanc',
-    ageHint: 'Découverte (4–6 ans)',
-    courtSize: 'Mini-terrain 8m • Balle mousse',
+    ageHint: '4–7 ans',
+    courtSize: 'Terrain 8 m • Sans filet • Ballon paille 26 cm',
+    racketHint: 'Raquette 17″ à 19″',
     color: '#64748B',
     bgSoft: '#F1F5F9',
     ringColor: '#CBD5E1',
     emoji: '☁️',
-    description: 'Découvrir la raquette, les rebonds et s’amuser avec la balle.',
+    description: 'Critères FFT de passage du niveau Blanc au niveau Violet.',
     milestones: [
       {
         id: 'blanc-1',
-        label: 'Tenir sa raquette et jongler 5 fois avec la balle mousse',
-        kidLabel: 'Faire 5 jongles magiques avec la raquette',
+        axis: 'technique',
+        subGroup: 'Fond de court',
+        label: 'Tenir la raquette en bout de manche et dans les 2 mains en début de point',
+        kidLabel: 'Bien tenir sa raquette prête avec les 2 mains',
       },
       {
         id: 'blanc-2',
-        label: 'Envoyer la balle par-dessus le mini-filet après un rebond',
-        kidLabel: 'Passer la balle au-dessus du filet',
+        axis: 'technique',
+        subGroup: 'Fond de court',
+        label: 'Jouer en coup droit et en revers en différenciant les faces du tamis',
+        kidLabel: 'Envoyer des coups droits et des revers',
       },
       {
         id: 'blanc-3',
-        label: 'Se déplacer vers la balle et s’arrêter pour frapper',
-        kidLabel: 'Courir vers la balle comme un guépard',
+        axis: 'technique',
+        subGroup: 'Jeu de jambes',
+        label: 'Se dégager des trajectoires pour frapper la balle',
+        kidLabel: 'Bouger autour de la balle comme un guépard',
       },
       {
         id: 'blanc-4',
-        label: 'Respecter les consignes et ranger le matériel avec le sourire',
-        kidLabel: 'Être une super coéquipière au cours',
+        axis: 'tactique',
+        label: 'Se placer en début de point, jouer où l’adversaire n’est pas et se replacer',
+        kidLabel: 'Envoyer la balle là où l’adversaire n’est pas',
+      },
+      {
+        id: 'blanc-5',
+        axis: 'comportement',
+        label: 'Respecter les consignes, saluer son adversaire et ranger le matériel',
+        kidLabel: 'Être une super coéquipière et saluer son adversaire',
+      },
+      {
+        id: 'blanc-6',
+        axis: 'arbitrage',
+        label: 'Attendre que l’autre joueur soit prêt avant d’engager et engager à tour de rôle',
+        kidLabel: 'Attendre que sa copine soit prête avant de lancer',
       },
     ],
   },
@@ -59,33 +186,53 @@ export const GALAXIE_LEVELS: BallLevelInfo[] = [
     id: 'violet',
     name: 'Niveau Violet',
     planetName: 'Planète Violette',
-    ageHint: '5–7 ans',
-    courtSize: 'Terrain 11m • Balle mousse / souple',
+    ageHint: '4–7 ans',
+    courtSize: 'Terrain 11 m • Filet 50 cm • Balle petit tennis 15 cm',
+    racketHint: 'Raquette 19″ à 21″',
     color: '#8B5CF6',
     bgSoft: '#F3EEFF',
     ringColor: '#C4B5FD',
     emoji: '🟣',
-    description: 'Commencer les échanges de 4 à 6 balles et les premiers petits matchs.',
+    description: 'Critères FFT de passage du niveau Violet au niveau Rouge.',
     milestones: [
       {
         id: 'violet-1',
-        label: 'Réaliser 6 échanges consécutifs avec un partenaire',
-        kidLabel: 'Faire 6 échanges de suite sans faire tomber la balle',
+        axis: 'technique',
+        subGroup: 'Service',
+        label: 'Adopter la bonne position de départ au service et frapper au-dessus de la tête',
+        kidLabel: 'Réussir son service par-dessus la tête',
       },
       {
         id: 'violet-2',
-        label: 'Différencier coup droit et revers avec préparation',
-        kidLabel: 'Maîtriser le coup droit ET le revers',
+        axis: 'technique',
+        subGroup: 'Fond de court',
+        label: 'Frapper la balle en avant du corps en coup droit et en revers (attitude d’attention main libre au cœur)',
+        kidLabel: 'Frapper la balle bien devant soi en coup droit et revers',
       },
       {
         id: 'violet-3',
-        label: 'Engager à la cuillère dans le terrain adverse',
-        kidLabel: 'Réussir son engagement dans le terrain',
+        axis: 'technique',
+        subGroup: 'Jeu de jambes',
+        label: 'Frapper en restant stable sur ses appuis',
+        kidLabel: 'Garder un super équilibre au moment de frapper',
       },
       {
         id: 'violet-4',
-        label: 'Connaître les lignes du terrain violet et serrer la main',
-        kidLabel: 'Connaître son terrain et saluer son adversaire',
+        axis: 'tactique',
+        label: 'Réussir plusieurs frappes consécutives dans l’échange',
+        kidLabel: 'Faire plusieurs échanges de suite sans faute',
+      },
+      {
+        id: 'violet-5',
+        axis: 'comportement',
+        label: 'Annoncer les balles fautes et le score à haute voix avec fair-play',
+        kidLabel: 'Annoncer le score à voix haute avec le sourire',
+      },
+      {
+        id: 'violet-6',
+        axis: 'arbitrage',
+        label: 'Reconnaître une balle bonne d’une balle faute, suivre et mémoriser le score',
+        kidLabel: 'Reconnaître si la balle est bonne ou faute et retenir le score',
       },
     ],
   },
@@ -94,37 +241,51 @@ export const GALAXIE_LEVELS: BallLevelInfo[] = [
     name: 'Niveau Rouge',
     planetName: 'Planète Terre Rouge',
     ageHint: '6–8 ans',
-    courtSize: 'Terrain 12m • Balle rouge',
+    courtSize: 'Terrain 12 m • Filet 80 cm • Balle rouge',
+    racketHint: 'Raquette 21″ à 23″',
     color: '#DC3545',
     bgSoft: '#FDECEF',
     ringColor: '#FCA5A5',
     emoji: '🔴',
-    description: 'Construire un vrai échange, servir par-dessus l’épaule et jouer des plateaux.',
+    description: 'Critères FFT de passage du niveau Rouge au niveau Orange.',
     milestones: [
       {
         id: 'rouge-1',
-        label: 'Tenir un échange régulier de 10 balles sur terrain rouge',
-        kidLabel: 'Tenir 10 échanges de suite comme une championne',
+        axis: 'technique',
+        subGroup: 'Service',
+        label: 'Servir en passant par la position armée et rester en équilibre',
+        kidLabel: 'Faire un beau service armé bien en équilibre',
       },
       {
         id: 'rouge-2',
-        label: 'Servir par-dessus l’épaule dans le bon carré de service',
-        kidLabel: 'Faire un vrai service par-dessus la tête',
+        axis: 'technique',
+        subGroup: 'Fond de court',
+        label: 'Enchaîner coup droit et revers réguliers en équilibre sur terrain rouge',
+        kidLabel: 'Tenir un grand échange coup droit + revers',
       },
       {
         id: 'rouge-3',
-        label: 'Monter au filet pour faire une volée contrôlée',
-        kidLabel: 'Réussir une volée au filet',
+        axis: 'tactique',
+        label: 'Déplacer l’adversaire sur le terrain (gauche / droite)',
+        kidLabel: 'Faire courir son adversaire à gauche et à droite',
       },
       {
         id: 'rouge-4',
-        label: 'Jouer un petit match en comptant les points jusqu’à 7 ou 10',
-        kidLabel: 'Jouer un match complet et compter les points',
+        axis: 'tactique',
+        label: 'Monter au filet et effectuer des volées contrôlées',
+        kidLabel: 'Avancer au filet pour réussir une super volée',
       },
       {
         id: 'rouge-5',
-        label: 'Se replacer au centre du terrain après chaque frappe',
-        kidLabel: 'Toujours revenir au centre du terrain',
+        axis: 'comportement',
+        label: 'Accepter les décisions, garder son calme et serrer la main après chaque match',
+        kidLabel: 'Rester positive et féliciter son adversaire au filet',
+      },
+      {
+        id: 'rouge-6',
+        axis: 'arbitrage',
+        label: 'Effectuer un jeu décisif (tie-break) en autonomie',
+        kidLabel: 'Jouer et compter un jeu décisif toute seule',
       },
     ],
   },
@@ -132,38 +293,53 @@ export const GALAXIE_LEVELS: BallLevelInfo[] = [
     id: 'orange',
     name: 'Niveau Orange',
     planetName: 'Planète Soleil Orange',
-    ageHint: '7–9 ans',
-    courtSize: 'Terrain 18m • Balle orange',
+    ageHint: '7–10 ans',
+    courtSize: 'Terrain 18 m • Filet 80 cm • Balle orange',
+    racketHint: 'Raquette 23″ à 25″',
     color: '#EA580C',
     bgSoft: '#FFF1E6',
     ringColor: '#FDBA74',
     emoji: '🟠',
-    description: 'Varier les directions, bouger son adversaire et découvrir la tactique.',
+    description: 'Critères FFT de passage du niveau Orange au niveau Vert.',
     milestones: [
       {
         id: 'orange-1',
-        label: 'Diriger la balle à droite ou à gauche volontairement',
-        kidLabel: 'Viser à gauche ou à droite du terrain',
+        axis: 'technique',
+        subGroup: 'Service',
+        label: 'Servir avec de l’effet slicé et accélérer sa 1re balle',
+        kidLabel: 'Réussir un service rapide avec effet',
       },
       {
         id: 'orange-2',
-        label: 'Enchaîner un service régulier puis un coup de fond de court',
-        kidLabel: 'Enchaîner service + coup droit',
+        axis: 'technique',
+        subGroup: 'Fond de court & Filet',
+        label: 'Attitude dynamique relâchée en fond de court et frapper devant soi en avançant au filet',
+        kidLabel: 'Frapper fluide du fond et avancer au filet',
       },
       {
         id: 'orange-3',
-        label: 'Faire un revers solide à deux mains en déplacement',
-        kidLabel: 'Envoyer un super revers en courant',
+        axis: 'technique',
+        subGroup: 'Jeu de jambes',
+        label: 'S’équilibrer, enchaîner ses déplacements (et glisser sur terre battue)',
+        kidLabel: 'Enchaîner vite ses appuis et déplacements',
       },
       {
         id: 'orange-4',
-        label: 'Compter les jeux (15, 30, 40) et annoncer le score',
-        kidLabel: 'Compter 15 - 30 - 40 toute seule',
+        axis: 'tactique',
+        label: 'Attaquer en accélérant, défendre en ralentissant, utiliser les effets et se placer en simple/double',
+        kidLabel: 'Choisir quand attaquer fort ou défendre haut',
       },
       {
         id: 'orange-5',
-        label: 'Rester calme et positive même après un point perdu',
-        kidLabel: 'Garder le sourire même quand un point est dur',
+        axis: 'comportement',
+        label: 'Gérer calmement d’éventuels désaccords avec son adversaire',
+        kidLabel: 'Régler un petit doute calmement avec son adversaire',
+      },
+      {
+        id: 'orange-6',
+        axis: 'arbitrage',
+        label: 'Compter dans le mode « jeu » (15, 30, 40, avantage)',
+        kidLabel: 'Compter 15 - 30 - 40 - Jeu en autonomie',
       },
     ],
   },
@@ -171,33 +347,46 @@ export const GALAXIE_LEVELS: BallLevelInfo[] = [
     id: 'vert',
     name: 'Niveau Vert',
     planetName: 'Planète Émeraude Verte',
-    ageHint: '9–10 ans',
-    courtSize: 'Grand terrain • Balle verte',
+    ageHint: '8–10 ans',
+    courtSize: 'Court traditionnel • Filet 91 cm • Balle verte',
+    racketHint: 'Raquette 25″ à 26″',
     color: '#16A34A',
     bgSoft: '#EAFBF0',
     ringColor: '#86EFAC',
     emoji: '🟢',
-    description: 'Jouer sur tout le grand court avec régularité, tactique et autonomie.',
+    description: 'Critères FFT de validation du niveau Vert vers la balle Jaune.',
     milestones: [
       {
         id: 'vert-1',
-        label: 'Échanger 15 balles depuis la ligne de fond du grand terrain',
-        kidLabel: 'Faire 15 échanges sur le grand terrain',
+        axis: 'technique',
+        subGroup: 'Service',
+        label: 'Servir slicé ou lifté avec sécurité en 2e balle',
+        kidLabel: 'Assurer une 2e balle de service avec effet',
       },
       {
         id: 'vert-2',
-        label: 'Utiliser la volée et le smash pour finir un point',
-        kidLabel: 'Finir un point au filet avec une volée ou un smash',
+        axis: 'technique',
+        subGroup: 'Fond de court & Appuis',
+        label: 'Traverser la balle en fond de court et savoir accélérer / freiner ses déplacements',
+        kidLabel: 'Traverser la balle fort sur tout le grand court',
       },
       {
         id: 'vert-3',
-        label: 'Gérer une 1re et une 2e balle de service fiable',
-        kidLabel: 'Maîtriser sa 1re et sa 2e balle de service',
+        axis: 'tactique',
+        label: 'Construire le point autour de son coup fort et intercepter en double',
+        kidLabel: 'Utiliser son coup préféré pour gagner le point',
       },
       {
         id: 'vert-4',
-        label: 'Arbitrer et gérer un match en format Galaxie Vert en autonomie',
-        kidLabel: 'Gérer tout un match Galaxie Vert comme une grande',
+        axis: 'comportement',
+        label: 'Respecter son adversaire et conserver une attitude exemplaire en toute circonstance',
+        kidLabel: 'Garder une attitude de vraie championne tout le match',
+      },
+      {
+        id: 'vert-5',
+        axis: 'arbitrage',
+        label: 'Être totalement autonome dans la gestion des règles et du match',
+        kidLabel: 'Arbitrer tout son match Galaxie Vert comme une grande',
       },
     ],
   },
@@ -229,28 +418,28 @@ export const SKILL_CATALOG: {
     label: 'Service',
     shortLabel: 'Service',
     emoji: '🚀',
-    description: 'Lancer de balle régulier, geste par-dessus la tête et précision.',
+    description: 'Position armée, lancer régulier, équilibre et précision.',
   },
   {
     key: 'volee',
     label: 'Volée & Filet',
     shortLabel: 'Volée',
     emoji: '⚡',
-    description: 'Raquette devant soi, réflexes et envie d’avancer au filet.',
+    description: 'Frapper devant soi en avançant, réflexes au filet.',
   },
   {
     key: 'deplacements',
     label: 'Jeu de jambes',
     shortLabel: 'Jambes',
     emoji: '👟',
-    description: 'Petits pas d’ajustement, reprise d’appui et replacement au centre.',
+    description: 'Dégagement des trajectoires, stabilité, appuis et replacement.',
   },
   {
     key: 'mental',
-    label: 'Plaisir & Fair-play',
-    shortLabel: 'Mental',
-    emoji: '💛',
-    description: 'Concentration, écoute du coach, courage et esprit sportif.',
+    label: 'Comportement & Arbitrage',
+    shortLabel: 'Mental / Arb.',
+    emoji: '🤝',
+    description: 'Fair-play, gestion des émotions, annonce du score et autonomie.',
   },
 ];
 
@@ -261,7 +450,7 @@ export const SESSION_TYPE_LABELS: Record<
   cours_club: { label: 'Cours au club', emoji: '🎾', color: '#1E4D3B' },
   jeu_famille: { label: 'Jeu en famille', emoji: '👨‍👧', color: '#C85A32' },
   stage: { label: 'Stage vacances', emoji: '☀️', color: '#D99B26' },
-  plateau: { label: 'Plateau Galaxie', emoji: '🏅', color: '#7C3AED' },
+  plateau: { label: 'Jeu & Matchs / Plateau', emoji: '🏅', color: '#7C3AED' },
 };
 
 export const CHILD_MOOD_OPTIONS: {
@@ -297,27 +486,23 @@ export interface AvatarShopItem {
 }
 
 export const AVATAR_SHOP_ITEMS: AvatarShopItem[] = [
-  // Headbands
   { id: 'hb-none', category: 'headband', value: 'none', label: 'Sans bandeau', emoji: '✨', cost: 0 },
   { id: 'hb-coral', category: 'headband', value: 'coral', label: 'Bandeau Terre Battue', emoji: '🎀', cost: 0 },
   { id: 'hb-gold', category: 'headband', value: 'gold', label: 'Bandeau Doré', emoji: '👑', cost: 15 },
   { id: 'hb-star', category: 'headband', value: 'star', label: 'Bandeau Étoile', emoji: '🌟', cost: 25 },
   { id: 'hb-visor', category: 'headband', value: 'visor', label: 'Visière Pro', emoji: '🧢', cost: 35 },
 
-  // Rackets
   { id: 'rk-classic', category: 'racket', value: 'classic', label: 'Raquette Club', emoji: '🎾', cost: 0 },
   { id: 'rk-rainbow', category: 'racket', value: 'rainbow', label: 'Raquette Arc-en-ciel', emoji: '🌈', cost: 20 },
   { id: 'rk-star', category: 'racket', value: 'star_pro', label: 'Raquette Galaxie', emoji: '☄️', cost: 35 },
   { id: 'rk-clay', category: 'racket', value: 'clay_champ', label: 'Raquette Roland', emoji: '🏆', cost: 50 },
 
-  // Companions
   { id: 'cp-none', category: 'companion', value: 'none', label: 'En solo', emoji: '🌸', cost: 0 },
   { id: 'cp-ball', category: 'companion', value: 'ball_buddy', label: 'Balle Rigolote', emoji: '🟡', cost: 15 },
   { id: 'cp-puppy', category: 'companion', value: 'puppy', label: 'Chiot Ramasseur', emoji: '🐶', cost: 30 },
   { id: 'cp-cat', category: 'companion', value: 'star_cat', label: 'Chaton Étoile', emoji: '🐱', cost: 40 },
   { id: 'cp-owl', category: 'companion', value: 'trophy_owl', label: 'Hibou Coach', emoji: '🦉', cost: 55 },
 
-  // Outfit colors
   { id: 'out-white', category: 'outfitColor', value: '#FFFFFF', label: 'Blanc Wimbledon', emoji: '🤍', cost: 0 },
   { id: 'out-coral', category: 'outfitColor', value: '#EE6C4D', label: 'Corail Roland', emoji: '🧡', cost: 0 },
   { id: 'out-mint', category: 'outfitColor', value: '#2A9D8F', label: 'Menthe Fraîche', emoji: '💚', cost: 10 },
@@ -339,20 +524,20 @@ export const CHALLENGE_TEMPLATES: {
     starsReward: 15,
   },
   {
-    title: '3 services réussis dans le carré',
-    description: 'Lancer la balle bien haut et réussir 3 beaux services dans le bon carré.',
+    title: '3 services armés dans le carré',
+    description: 'Passer par la position armée et réussir 3 beaux services en équilibre.',
     category: 'service',
     starsReward: 15,
   },
   {
     title: 'Super revers à deux mains',
-    description: 'Se tourner de profil et réussir 5 beaux revers pendant le cours.',
+    description: 'Frapper la balle bien devant soi en revers pendant le cours.',
     category: 'technique',
     starsReward: 15,
   },
   {
     title: 'Défi jongles magiques',
-    description: 'Faire 10 petits jongles de suite avec la raquette (côté coup droit ou revers).',
+    description: 'Faire 10 petits jongles de suite avec la raquette.',
     category: 'jeu',
     starsReward: 10,
   },
@@ -364,7 +549,7 @@ export const CHALLENGE_TEMPLATES: {
   },
   {
     title: 'Médaille du Super Fair-Play',
-    description: 'Encourager sa partenaire et dire merci au coach à la fin de la séance.',
+    description: 'Annoncer le score à voix haute et féliciter son adversaire au filet.',
     category: 'fairplay',
     starsReward: 10,
   },
@@ -530,7 +715,7 @@ export const BADGE_CATALOG: BadgeDefinition[] = [
   {
     id: 'plateau-star',
     title: 'Joueuse de Plateau',
-    description: 'Participer à un plateau ou petit match Galaxie',
+    description: 'Participer à un plateau ou journée Jeu & Matchs',
     emoji: '🏅',
     color: '#D97706',
   },
@@ -544,7 +729,7 @@ export const BADGE_CATALOG: BadgeDefinition[] = [
   {
     id: 'milestone-5',
     title: 'Exploratrice Galaxie',
-    description: 'Valider 5 étapes sur la carte Galaxie Tennis',
+    description: 'Valider 5 critères TTCA sur la carte Galaxie Tennis',
     emoji: '🪐',
     color: '#0EA5E9',
   },
@@ -564,8 +749,8 @@ export const BADGE_CATALOG: BadgeDefinition[] = [
   },
   {
     id: 'service-ace',
-    title: 'As du Service',
-    description: 'Atteindre le niveau 4/5 au service ou coup droit',
+    title: 'Validée par le Coach',
+    description: 'Obtenir le statut Acquis sur le Service ou le Coup droit',
     emoji: '🚀',
     color: '#C85A32',
   },

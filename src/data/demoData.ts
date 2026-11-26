@@ -1,5 +1,11 @@
 import { CHALLENGE_TEMPLATES } from './galaxieCatalog';
-import type { Club, FamilyState, StudioChallengeTemplate, StudioRewardTemplate } from '../types/tennis';
+import type {
+  Club,
+  FamilyState,
+  MilestoneEvaluation,
+  StudioChallengeTemplate,
+  StudioRewardTemplate,
+} from '../types/tennis';
 
 function daysAgo(days: number): string {
   const d = new Date();
@@ -74,9 +80,58 @@ export function createInitialDemoState(): FamilyState {
   const studioChallenges = createDefaultStudioChallenges();
   const studioRewards = createDefaultStudioRewards();
 
+  const acquiredIds = [
+    'blanc-1',
+    'blanc-2',
+    'blanc-3',
+    'blanc-4',
+    'blanc-5',
+    'blanc-6',
+    'violet-1',
+    'violet-2',
+    'violet-3',
+    'violet-4',
+    'violet-5',
+    'violet-6',
+    'rouge-2',
+    'rouge-5',
+  ];
+
+  const milestoneEvaluations: Record<string, MilestoneEvaluation> = {};
+  for (const id of acquiredIds) {
+    milestoneEvaluations[id] = {
+      status: 'acquis',
+      validatedBy: 'coach',
+      validatorName: 'Coach Camille',
+      updatedAt: daysAgo(6),
+    };
+  }
+  milestoneEvaluations['rouge-1'] = {
+    status: 'en_cours',
+    validatedBy: 'coach',
+    validatorName: 'Coach Camille',
+    note: 'Belle position armée, continuer le travail d’équilibre à la fin du geste.',
+    updatedAt: daysAgo(2),
+  };
+  milestoneEvaluations['rouge-3'] = {
+    status: 'en_cours',
+    validatedBy: 'coach',
+    validatorName: 'Coach Camille',
+    note: 'Commence à bien varier droite / gauche en match.',
+    updatedAt: daysAgo(2),
+  };
+  milestoneEvaluations['rouge-4'] = {
+    status: 'en_cours',
+    validatedBy: 'coach',
+    validatorName: 'Coach Camille',
+    note: 'Bonne envie d’avancer au filet !',
+    updatedAt: daysAgo(8),
+  };
+
   return {
     familyName: 'Famille Tennis',
     parentPin: '1234',
+    coachPin: '0000',
     tabletLocked: false,
     activeChildId: childId,
     clubs: defaultClubs,
@@ -111,48 +166,55 @@ export function createInitialDemoState(): FamilyState {
           'out-white',
           'out-coral',
         ],
-        milestonesCompleted: [
-          'blanc-1',
-          'blanc-2',
-          'blanc-3',
-          'blanc-4',
-          'violet-1',
-          'violet-2',
-          'violet-3',
-          'violet-4',
-          'rouge-1',
-          'rouge-2',
-          'rouge-5',
-        ],
+        milestonesCompleted: acquiredIds,
+        milestoneEvaluations,
         skillLevels: {
           coup_droit: {
-            level: 4,
+            status: 'acquis',
+            level: 5,
             note: 'Très belle préparation, frappe bien devant elle en balle rouge.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(2),
           },
           revers: {
+            status: 'en_cours',
             level: 3,
             note: 'Revers à deux mains en net progrès, bien penser à tourner les épaules.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(2),
           },
           service: {
+            status: 'en_cours',
             level: 3,
-            note: 'Commence à servir par-dessus l’épaule avec un bon lancer.',
+            note: 'Passe par la position armée, lancer de plus en plus régulier.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(5),
           },
           volee: {
-            level: 2,
+            status: 'en_cours',
+            level: 3,
             note: 'Découverte ludique au filet, adore les jeux de réflexes.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(9),
           },
           deplacements: {
-            level: 4,
+            status: 'acquis',
+            level: 5,
             note: 'Très dynamique, revient spontanément au centre du terrain.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(2),
           },
           mental: {
+            status: 'acquis',
             level: 5,
-            note: 'Toujours souriante, encourage ses copines et écoute bien le coach.',
+            note: 'Toujours souriante, annonce le score à voix haute et encourage ses copines.',
+            validatedBy: 'coach',
+            validatorName: 'Coach Camille',
             updatedAt: daysAgo(2),
           },
         },
@@ -186,7 +248,7 @@ export function createInitialDemoState(): FamilyState {
         effortRating: 5,
         starsAwarded: 15,
         coachNote:
-          'Super séance sur le service par-dessus la tête ! Léa a réussi 6 échanges de suite en fond de court.',
+          'Super séance sur le service armé ! Léa a réussi 6 échanges de suite en fond de court.',
         parentNote:
           'Elle est sortie du court avec un immense sourire et voulait rejouer dans le jardin.',
         createdAt: now,
@@ -233,7 +295,7 @@ export function createInitialDemoState(): FamilyState {
         focusSkills: ['mental', 'deplacements'],
         effortRating: 5,
         starsAwarded: 20,
-        coachNote: 'Premier plateau Galaxie Rouge ! Très bon esprit sportif.',
+        coachNote: 'Première journée Jeu & Matchs Galaxie Rouge ! Très bon esprit sportif.',
         parentNote: 'Elle a joué 4 petits matchs de 10 minutes contre des enfants d’autres clubs.',
         childMood: 'rigolo',
         childFavoriteMoment: '🏅 Le petit match',
@@ -258,8 +320,8 @@ export function createInitialDemoState(): FamilyState {
         id: 'chal-2',
         childId,
         templateId: 'tpl-ch-2',
-        title: '3 services par-dessus la tête',
-        description: 'Lancer la balle bien haut et réussir 3 services dans le carré.',
+        title: '3 services armés dans le carré',
+        description: 'Passer par la position armée et réussir 3 beaux services en équilibre.',
         category: 'service',
         starsReward: 15,
         status: 'active',
@@ -271,7 +333,7 @@ export function createInitialDemoState(): FamilyState {
         childId,
         templateId: 'tpl-ch-6',
         title: 'Médaille du Super Fair-Play',
-        description: 'Encourager ses copines et ranger toutes les balles avec le sourire.',
+        description: 'Annoncer le score à voix haute et féliciter son adversaire au filet.',
         category: 'fairplay',
         starsReward: 10,
         status: 'completed',
@@ -285,13 +347,13 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'tour-1',
         childId,
-        name: 'Plateau Galaxie Rouge d’Automne',
+        name: 'Journée Jeu & Matchs Galaxie Rouge',
         eventDate: daysAgo(15),
         ballLevel: 'rouge',
         matchesPlayed: 4,
         highlight: 'A réussi son tout premier service gagnant en match !',
         positivePoints:
-          'Beaucoup de sourires, a compté les points toute seule et s’est fait une nouvelle copine.',
+          'Beaucoup de sourires, a annoncé le score à voix haute et s’est fait une nouvelle copine.',
         location: 'TC des Lilas',
         createdAt: now,
       },
@@ -345,7 +407,7 @@ export function createInitialDemoState(): FamilyState {
       {
         id: 'evt-2',
         childId,
-        title: 'Mini-Plateau Galaxie Rouge / Orange',
+        title: 'Journée Jeu & Matchs Galaxie Rouge / Orange',
         eventDate: daysAhead(9),
         eventTime: '10h00',
         eventType: 'plateau',

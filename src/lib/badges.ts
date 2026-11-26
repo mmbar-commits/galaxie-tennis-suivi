@@ -36,9 +36,16 @@ export function computeUnlockedBadgeIds(params: {
   if (child.unlockedItems.length > 5) unlocked.add('fashion-pro');
   if (memories.length >= 1) unlocked.add('memory-keeper');
 
-  const serviceLvl = child.skillLevels.service?.level ?? 0;
-  const fhLvl = child.skillLevels.coup_droit?.level ?? 0;
-  if (serviceLvl >= 4 || fhLvl >= 4) unlocked.add('service-ace');
+  const serviceEntry = child.skillLevels.service;
+  const fhEntry = child.skillLevels.coup_droit;
+  if (
+    serviceEntry?.status === 'acquis' ||
+    fhEntry?.status === 'acquis' ||
+    (serviceEntry?.level ?? 0) >= 4 ||
+    (fhEntry?.level ?? 0) >= 4
+  ) {
+    unlocked.add('service-ace');
+  }
 
   // Ensure all IDs exist in catalog
   const validIds = new Set(BADGE_CATALOG.map((b) => b.id));

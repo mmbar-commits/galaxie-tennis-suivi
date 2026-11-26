@@ -5,7 +5,11 @@ import {
   createDefaultStudioRewards,
   createInitialDemoState,
 } from '../data/demoData';
-import { DAILY_QUIZ_STAR_CAP } from '../data/galaxieCatalog';
+import {
+  ACQUISITION_STATUS_META,
+  DAILY_QUIZ_STAR_CAP,
+  SKILL_CATALOG,
+} from '../data/galaxieCatalog';
 import {
   getSupabaseClient,
   getSupabaseConfig,
@@ -13,6 +17,7 @@ import {
   type SupabaseRuntimeConfig,
 } from './supabase';
 import type {
+  AcquisitionStatus,
   AvatarConfig,
   BallLevel,
   Challenge,
@@ -24,9 +29,11 @@ import type {
   EquipmentInfo,
   FamilyState,
   MemoryItem,
+  MilestoneEvaluation,
   QuizAttempt,
   RewardItem,
   RewardRedemption,
+  SkillEntry,
   SkillKey,
   StudioChallengeTemplate,
   StudioRewardTemplate,
@@ -42,6 +49,12 @@ function uid(prefix: string): string {
     return crypto.randomUUID();
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function levelToStatus(level?: number): AcquisitionStatus {
+  if (!level || level <= 1) return 'non_evalue';
+  if (level >= 4) return 'acquis';
+  return 'en_cours';
 }
 
 function normalizeFamilyState(raw: FamilyState): FamilyState {
@@ -69,6 +82,48 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
     }
   }
 
+  // Migrate legacy milestonesCompleted & skillLevels to TTCA milestoneEvaluations & AcquisitionStatus
+  children = children.map((c) => {
+    const existingEvals: Record<string, MilestoneEvaluation> = {
+      ...(c.milestoneEvaluations || {}),
+    };
+    const completed = Array.isArray(c.milestonesCompleted) ? c.milestonesCompleted : [];
+    for (const id of completed) {
+      if (!existingEvals[id]) {
+        existingEvals[id] = {
+          status: 'acquis',
+          validatedBy: 'parent',
+          updatedAt: new Date().toISOString().slice(0, 10),
+        };
+      }
+    }
+
+    const syncedCompleted = Object.entries(existingEvals)
+      .filter(([, ev]) => ev.status === 'acquis')
+      .map(([id]) => id);
+
+    const normalizedSkills = { ...c.skillLevels } as Record<SkillKey, SkillEntry>;
+    for (const sk of SKILL_CATALOG) {
+      const prev = normalizedSkills[sk.key];
+      const status: AcquisitionStatus = prev?.status ?? levelToStatus(prev?.level);
+      normalizedSkills[sk.key] = {
+        status,
+        level: ACQUISITION_STATUS_META[status].numericLevel,
+        note: prev?.note ?? '',
+        validatedBy: prev?.validatedBy,
+        validatorName: prev?.validatorName,
+        updatedAt: prev?.updatedAt ?? '',
+      };
+    }
+
+    return {
+      ...c,
+      milestonesCompleted: syncedCompleted,
+      milestoneEvaluations: existingEvals,
+      skillLevels: normalizedSkills,
+    };
+  });
+
   const studioChallenges =
     Array.isArray(raw.studioChallenges) && raw.studioChallenges.length > 0
       ? raw.studioChallenges
@@ -81,6 +136,7 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
 
   return {
     ...raw,
+    coachPin: raw.coachPin || '0000',
     clubs,
     studioChallenges,
     studioRewards,
@@ -135,6 +191,7 @@ interface TennisStoreContextValue {
   setActiveChildId: (childId: string) => void;
   setTabletLocked: (locked: boolean) => void;
   updateParentPin: (newPin: string) => void;
+  updateCoachPin: (newPin: string) => void;
   updateFamilyName: (name: string) => void;
 
   // Global Clubs catalog
@@ -169,7 +226,18 @@ interface TennisStoreContextValue {
   updateChildAvatar: (patch: Partial<AvatarConfig>) => void;
   buyAvatarItem: (itemId: string, cost: number, patch: Partial<AvatarConfig>) => boolean;
   toggleMilestone: (milestoneId: string) => void;
+  setMilestoneStatus: (
+    milestoneId: string,
+    status: AcquisitionStatus,
+    options?: { validatedBy?: 'coach' | 'parent'; validatorName?: string; note?: string },
+  ) => void;
   updateSkillLevel: (skill: SkillKey, level: number, note: string) => void;
+  updateSkillStatus: (
+    skill: SkillKey,
+    status: AcquisitionStatus,
+    note: string,
+    options?: { validatedBy?: 'coach' | 'parent'; validatorName?: string },
+  ) => void;
   updateClubInfo: (info: ClubInfo) => void;
   updateEquipmentInfo: (info: EquipmentInfo) => void;
 
@@ -420,6 +488,10 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         avatarConfig: { ...demoFallback.avatarConfig, ...(row.avatar_config || {}) },
         unlockedItems: Array.isArray(row.unlocked_items) ? row.unlocked_items : demoFallback.unlockedItems,
         milestonesCompleted: Array.isArray(row.milestones_completed) ? row.milestones_completed : [],
+        milestoneEvaluations:
+          row.milestone_evaluations && typeof row.milestone_evaluations === 'object'
+            ? row.milestone_evaluations
+            : {},
         skillLevels: { ...demoFallback.skillLevels, ...(row.skill_levels || {}) },
         clubInfo: { ...demoFallback.clubInfo, ...(row.club_info || {}) },
         equipmentInfo: { ...demoFallback.equipmentInfo, ...(row.equipment_info || {}) },
@@ -430,6 +502,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         normalizeFamilyState({
           familyName: familyRow.family_name || prev.familyName,
           parentPin: familyRow.parent_pin || prev.parentPin,
+          coachPin: familyRow.coach_pin || prev.coachPin || '0000',
           tabletLocked: prev.tabletLocked,
           clubs: Array.isArray(familyRow.clubs) ? familyRow.clubs : prev.clubs,
           studioChallenges: Array.isArray(familyRow.studio_challenges)
@@ -775,6 +848,15 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     void syncCloudOp(async (sb) => {
       if (familyDbIdRef.current) {
         await sb.from('families').update({ parent_pin: newPin }).eq('id', familyDbIdRef.current);
+      }
+    });
+  };
+
+  const updateCoachPin = (newPin: string) => {
+    setState((prev) => ({ ...prev, coachPin: newPin }));
+    void syncCloudOp(async (sb) => {
+      if (familyDbIdRef.current) {
+        await sb.from('families').update({ coach_pin: newPin }).eq('id', familyDbIdRef.current);
       }
     });
   };
@@ -1141,12 +1223,32 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     return true;
   };
 
-  const toggleMilestone = (milestoneId: string) => {
-    const exists = activeChild.milestonesCompleted.includes(milestoneId);
-    const nextMilestones = exists
-      ? activeChild.milestonesCompleted.filter((id) => id !== milestoneId)
-      : [...activeChild.milestonesCompleted, milestoneId];
-    const starDelta = exists ? 0 : 10;
+  const setMilestoneStatus = (
+    milestoneId: string,
+    status: AcquisitionStatus,
+    options?: { validatedBy?: 'coach' | 'parent'; validatorName?: string; note?: string },
+  ) => {
+    const prevEval = activeChild.milestoneEvaluations?.[milestoneId];
+    const wasAcquis =
+      prevEval?.status === 'acquis' || activeChild.milestonesCompleted.includes(milestoneId);
+    const nowAcquis = status === 'acquis';
+
+    const nextEvals: Record<string, MilestoneEvaluation> = {
+      ...(activeChild.milestoneEvaluations || {}),
+      [milestoneId]: {
+        status,
+        validatedBy: options?.validatedBy ?? prevEval?.validatedBy ?? 'parent',
+        validatorName: options?.validatorName ?? prevEval?.validatorName,
+        note: options?.note !== undefined ? options.note : prevEval?.note,
+        updatedAt: new Date().toISOString().slice(0, 10),
+      },
+    };
+
+    const nextMilestones = Object.entries(nextEvals)
+      .filter(([, ev]) => ev.status === 'acquis')
+      .map(([id]) => id);
+
+    const starDelta = !wasAcquis && nowAcquis ? 10 : 0;
     const nextBalance = activeChild.starsBalance + starDelta;
     const nextTotal = activeChild.totalStarsEarned + starDelta;
 
@@ -1155,25 +1257,51 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       (c) => ({
         ...c,
         milestonesCompleted: nextMilestones,
+        milestoneEvaluations: nextEvals,
         starsBalance: nextBalance,
         totalStarsEarned: nextTotal,
       }),
       {
         milestones_completed: nextMilestones,
+        milestone_evaluations: nextEvals,
         stars_balance: nextBalance,
         total_stars_earned: nextTotal,
       },
     );
   };
 
-  const updateSkillLevel = (skill: SkillKey, level: number, note: string) => {
+  const toggleMilestone = (milestoneId: string) => {
+    const current = activeChild.milestoneEvaluations?.[milestoneId]?.status ?? 'non_evalue';
+    const next: AcquisitionStatus =
+      current === 'non_evalue' ? 'en_cours' : current === 'en_cours' ? 'acquis' : 'non_evalue';
+    setMilestoneStatus(milestoneId, next, { validatedBy: 'parent' });
+  };
+
+  const updateSkillStatus = (
+    skill: SkillKey,
+    status: AcquisitionStatus,
+    note: string,
+    options?: { validatedBy?: 'coach' | 'parent'; validatorName?: string },
+  ) => {
+    const prev = activeChild.skillLevels[skill];
     const nextSkills = {
       ...activeChild.skillLevels,
-      [skill]: { level, note, updatedAt: new Date().toISOString().slice(0, 10) },
+      [skill]: {
+        status,
+        level: ACQUISITION_STATUS_META[status].numericLevel,
+        note,
+        validatedBy: options?.validatedBy ?? prev?.validatedBy ?? 'parent',
+        validatorName: options?.validatorName ?? prev?.validatorName,
+        updatedAt: new Date().toISOString().slice(0, 10),
+      },
     };
     patchChild(activeChild.id, (c) => ({ ...c, skillLevels: nextSkills }), {
       skill_levels: nextSkills,
     });
+  };
+
+  const updateSkillLevel = (skill: SkillKey, level: number, note: string) => {
+    updateSkillStatus(skill, levelToStatus(level), note, { validatedBy: 'parent' });
   };
 
   const updateClubInfo = (info: ClubInfo) => {
@@ -1760,6 +1888,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     setActiveChildId,
     setTabletLocked,
     updateParentPin,
+    updateCoachPin,
     updateFamilyName,
     addClub,
     updateClub,
@@ -1779,7 +1908,9 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     updateChildAvatar,
     buyAvatarItem,
     toggleMilestone,
+    setMilestoneStatus,
     updateSkillLevel,
+    updateSkillStatus,
     updateClubInfo,
     updateEquipmentInfo,
     addSession,

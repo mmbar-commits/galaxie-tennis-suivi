@@ -36,6 +36,7 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
     addChild,
     updateFamilyName,
     updateParentPin,
+    updateCoachPin,
     setTabletLocked,
     exportJson,
     importJson,
@@ -48,6 +49,7 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
   const [newChildBall, setNewChildBall] = useState<BallLevel>('violet');
   const [newChildClubId, setNewChildClubId] = useState(state.clubs[0]?.id ?? '');
   const [pinDraft, setPinDraft] = useState(state.parentPin);
+  const [coachPinDraft, setCoachPinDraft] = useState(state.coachPin);
 
   // Club create/edit form
   const [editingClubId, setEditingClubId] = useState<string | null>(null);
@@ -470,34 +472,90 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
               <Shield className="h-5 w-5 text-[#C85A32]" />
               Sécurité Parent & Mode Tablette
             </h2>
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">
-                Code PIN Parent (4 chiffres pour quitter la vue Enfant)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  maxLength={4}
-                  pattern="\d{4}"
-                  value={pinDraft}
-                  onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-28 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-center text-sm font-bold tracking-widest outline-none focus:border-[#C85A32]"
-                />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">
+                  Code PIN Parent (4 chiffres)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={4}
+                    pattern="\d{4}"
+                    value={pinDraft}
+                    onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    className="w-24 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-center text-sm font-bold tracking-widest outline-none focus:border-[#C85A32]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (pinDraft.length === 4) {
+                        updateParentPin(pinDraft);
+                        notify('Code PIN Parent mis à jour !');
+                      } else {
+                        notify('Le code PIN doit contenir exactement 4 chiffres.');
+                      }
+                    }}
+                    className="rounded-xl bg-[#1F2421] px-3 py-2 text-xs font-bold text-white hover:bg-black"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-[#5C6660]">
+                  Code PIN Coach (accès Vue Coach)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={4}
+                    pattern="\d{4}"
+                    value={coachPinDraft}
+                    onChange={(e) =>
+                      setCoachPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))
+                    }
+                    className="w-24 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-center text-sm font-bold tracking-widest outline-none focus:border-[#1E4D3B]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (coachPinDraft.length === 4) {
+                        updateCoachPin(coachPinDraft);
+                        notify('Code PIN Coach mis à jour !');
+                      } else {
+                        notify('Le code PIN Coach doit contenir 4 chiffres.');
+                      }
+                    }}
+                    className="rounded-xl bg-[#1E4D3B] px-3 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#EFE6DA] bg-[#FAF6F0] px-3.5 py-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold text-[#1E4D3B]">
+                  🔗 Lien direct Vue Coach (<code>?mode=coach</code>)
+                </span>
                 <button
                   type="button"
                   onClick={() => {
-                    if (pinDraft.length === 4) {
-                      updateParentPin(pinDraft);
-                      notify('Code PIN mis à jour !');
-                    } else {
-                      notify('Le code PIN doit contenir exactement 4 chiffres.');
-                    }
+                    const coachUrl = `${window.location.origin}${window.location.pathname}?mode=coach`;
+                    void navigator.clipboard?.writeText(coachUrl);
+                    notify('Lien Vue Coach copié dans le presse-papiers !');
                   }}
-                  className="rounded-xl bg-[#1F2421] px-4 py-2 text-xs font-bold text-white hover:bg-black"
+                  className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-[#C85A32] shadow-2xs hover:bg-[#FDF0EB]"
                 >
-                  Changer PIN
+                  Copier le lien
                 </button>
               </div>
+              <p className="mt-1 text-[11px] text-[#5C6660]">
+                Le coach peut valider les acquis TTCA sans accéder aux réglages privés de la famille.
+              </p>
             </div>
 
             <label className="flex cursor-pointer items-center justify-between rounded-xl border border-[#EFE6DA] bg-[#FAF6F0] px-3.5 py-3">

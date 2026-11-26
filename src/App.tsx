@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChildLayout } from './components/child/ChildLayout';
+import { CoachView } from './components/coach/CoachView';
 import { ParentLayout } from './components/parent/ParentLayout';
 import { AuthModal } from './components/shared/AuthModal';
 import { PinModal } from './components/shared/PinModal';
@@ -10,15 +11,22 @@ import type { AppMode } from './types/tennis';
 function AppShell() {
   const { state, setTabletLocked } = useTennisStore();
 
+  const [initialUrlMode] = useState(() => new URLSearchParams(window.location.search).get('mode'));
+
   const [mode, setMode] = useState<AppMode>(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('mode') === 'enfant' || state.tabletLocked) {
+    if (initialUrlMode === 'enfant' || state.tabletLocked) {
+      return 'child';
+    }
+    if (initialUrlMode === 'coach') {
       return 'child';
     }
     return 'parent';
   });
 
-  const [showPinModal, setShowPinModal] = useState(false);
+  // If opened directly via ?mode=coach, prompt Coach PIN immediately
+  const [pinTarget, setPinTarget] = useState<'parent' | 'coach' | null>(() =>
+    initialUrlMode === 'coach' ? 'coach' : null,
+  );
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -29,34 +37,63 @@ function AppShell() {
     setMode('child');
   };
 
+  const handleSwitchToCoach = () => {
+    setMode('coach');
+  };
+
   const handleRequestParentMode = () => {
-    setShowPinModal(true);
+    setPinTarget('parent');
   };
 
   const handlePinVerified = () => {
-    setShowPinModal(false);
-    setMode('parent');
+    const target = pinTarget;
+    setPinTarget(null);
+    if (target === 'coach') {
+      setMode('coach');
+    } else if (target === 'parent') {
+      setMode('parent');
+    }
   };
 
   return (
     <>
-      {mode === 'child' ? (
-        <ChildLayout onRequestParentMode={handleRequestParentMode} />
-      ) : (
+      {mode === 'child' && <ChildLayout onRequestParentMode={handleRequestParentMode} />}
+
+      {mode === 'coach' && (
+        <CoachView
+          onRequestParentMode={handleRequestParentMode}
+          onSwitchToChild={() => handleSwitchToChild(false)}
+        />
+      )}
+
+      {mode === 'parent' && (
         <ParentLayout
           onSwitchToChild={handleSwitchToChild}
+          onSwitchToCoach={handleSwitchToCoach}
           onOpenPrintReport={() => setShowPrintReport(true)}
           onOpenAuthModal={() => setShowAuthModal(true)}
         />
       )}
 
-      {showPinModal && (
+      {pinTarget === 'parent' && (
         <PinModal
           expectedPin={state.parentPin}
+          defaultDemoPin="1234"
           title={state.tabletLocked ? 'Déverrouiller la Tablette' : 'Accès Espace Parent'}
           subtitle="Saisis le code PIN Parent à 4 chiffres."
           onSuccess={handlePinVerified}
-          onClose={() => setShowPinModal(false)}
+          onClose={() => setPinTarget(null)}
+        />
+      )}
+
+      {pinTarget === 'coach' && (
+        <PinModal
+          expectedPin={state.coachPin}
+          defaultDemoPin="0000"
+          title="Accès Espace Coach"
+          subtitle="Saisis le code PIN Coach à 4 chiffres pour valider les acquis TTCA."
+          onSuccess={handlePinVerified}
+          onClose={() => setPinTarget(null)}
         />
       )}
 

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Printer, X } from 'lucide-react';
 import {
+  ACQUISITION_STATUS_META,
   BADGE_CATALOG,
   GALAXIE_LEVELS,
   SKILL_CATALOG,
+  TTCA_AXES,
 } from '../../data/galaxieCatalog';
 import { computeUnlockedBadgeIds } from '../../lib/badges';
 import { useTennisStore } from '../../lib/store';
@@ -139,21 +141,58 @@ export function PrintReportModal({ onClose }: PrintReportModalProps) {
           <div className="grid gap-6 md:grid-cols-2">
             <div>
               <h2 className="parent-display mb-3 text-lg font-bold text-[#1E4D3B]">
-                Compétences Techniques
+                Acquis Techniques & TTCA ({ballInfo.name})
               </h2>
-              <div className="space-y-2.5">
+              <div className="mb-3 grid grid-cols-2 gap-2">
+                {TTCA_AXES.map((axis) => {
+                  const items = ballInfo.milestones.filter((m) => m.axis === axis.id);
+                  const acquis = items.filter(
+                    (m) =>
+                      (activeChild.milestoneEvaluations?.[m.id]?.status ??
+                        (activeChild.milestonesCompleted.includes(m.id)
+                          ? 'acquis'
+                          : 'non_evalue')) === 'acquis',
+                  ).length;
+                  return (
+                    <div
+                      key={axis.id}
+                      className="rounded-xl border border-[#EFE6DA] bg-[#FAF6F0] px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="font-bold" style={{ color: axis.color }}>
+                        {axis.emoji} {axis.label}
+                      </span>
+                      <p className="font-bold text-[#1F2421]">
+                        {acquis}/{items.length} acquis
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2">
                 {SKILL_CATALOG.map((sk) => {
                   const entry = activeChild.skillLevels[sk.key];
+                  const st = entry?.status ?? 'non_evalue';
+                  const meta = ACQUISITION_STATUS_META[st];
                   return (
                     <div key={sk.key} className="rounded-xl border border-[#EFE6DA] p-2.5">
-                      <div className="flex items-center justify-between text-sm font-semibold">
+                      <div className="flex items-center justify-between text-xs font-semibold">
                         <span>
                           {sk.emoji} {sk.label}
                         </span>
-                        <span className="text-[#C85A32]">{entry?.level ?? 1} / 5</span>
+                        <span
+                          className="rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                          style={{
+                            backgroundColor: meta.bg,
+                            color: meta.text,
+                            borderColor: meta.border,
+                          }}
+                        >
+                          {meta.emoji} {meta.shortLabel}
+                        </span>
                       </div>
                       {entry?.note && (
-                        <p className="mt-1 text-xs text-[#5C6660]">{entry.note}</p>
+                        <p className="mt-1 text-[11px] text-[#5C6660]">{entry.note}</p>
                       )}
                     </div>
                   );
