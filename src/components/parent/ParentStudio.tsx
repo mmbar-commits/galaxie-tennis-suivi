@@ -16,6 +16,7 @@ const CATEGORY_LABELS: Record<Challenge['category'], { label: string; emoji: str
 export function ParentStudio() {
   const {
     state,
+    visibleChildren,
     addStudioChallenge,
     updateStudioChallenge,
     deleteStudioChallenge,
@@ -296,13 +297,13 @@ export function ParentStudio() {
                       <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#5C6660]">
                         <Users className="h-3 w-3" /> Assigner aux enfants
                       </span>
-                      {state.children.length > 1 && (
+                      {visibleChildren.length > 1 && (
                         <button
                           type="button"
                           onClick={() => {
                             const count = assignStudioChallengeToChildren(
                               tpl.id,
-                              state.children.map((c) => c.id),
+                              visibleChildren.map((c) => c.id),
                             );
                             notify(
                               count > 0
@@ -317,7 +318,7 @@ export function ParentStudio() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {state.children.map((child) => {
+                      {visibleChildren.map((child) => {
                         const assigned = isChallengeAssignedTo(tpl.id, tpl.title, child.id);
                         return (
                           <button
@@ -478,13 +479,13 @@ export function ParentStudio() {
                     <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[#5C6660]">
                       <Users className="h-3 w-3" /> Boutique des enfants
                     </span>
-                    {state.children.length > 1 && (
+                    {visibleChildren.length > 1 && (
                       <button
                         type="button"
                         onClick={() => {
                           const count = assignStudioRewardToChildren(
                             tpl.id,
-                            state.children.map((c) => c.id),
+                            visibleChildren.map((c) => c.id),
                           );
                           notify(
                             count > 0
@@ -499,7 +500,7 @@ export function ParentStudio() {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {state.children.map((child) => {
+                    {visibleChildren.map((child) => {
                       const assigned = isRewardAssignedTo(tpl.id, tpl.title, child.id);
                       return (
                         <button

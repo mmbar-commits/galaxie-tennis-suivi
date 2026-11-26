@@ -10,6 +10,7 @@ import {
   DAILY_QUIZ_STAR_CAP,
   SKILL_CATALOG,
 } from '../data/galaxieCatalog';
+import type { InitialAssessmentResult } from '../data/initialAssessment';
 import {
   getSupabaseClient,
   getSupabaseConfig,
@@ -17,6 +18,7 @@ import {
   type SupabaseRuntimeConfig,
 } from './supabase';
 import type {
+  AccountProfile,
   AcquisitionStatus,
   AvatarConfig,
   BallLevel,
@@ -26,6 +28,7 @@ import type {
   ChildTheme,
   Club,
   ClubInfo,
+  CoachChildLink,
   EquipmentInfo,
   FamilyState,
   MemoryItem,
@@ -40,6 +43,7 @@ import type {
   TournamentEntry,
   TrainingSession,
   UpcomingEvent,
+  UserRole,
 } from '../types/tennis';
 
 const LOCAL_STORAGE_KEY = 'galaxie_tennis_family_state_v1';
@@ -49,6 +53,23 @@ function uid(prefix: string): string {
     return crypto.randomUUID();
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function generateUniqueCoachCode(fullName: string, existingCodes: string[]): string {
+  const cleanPrefix = fullName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z]/g, '')
+    .toUpperCase()
+    .slice(0, 3)
+    .padEnd(3, 'X');
+  const existing = new Set(existingCodes.map((c) => c.toUpperCase()));
+  for (let i = 0; i < 40; i++) {
+    const num = Math.floor(100 + Math.random() * 900);
+    const candidate = `COACH-${cleanPrefix}${num}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `COACH-${cleanPrefix}${Date.now().toString().slice(-4)}`;
 }
 
 function levelToStatus(level?: number): AcquisitionStatus {
@@ -118,11 +139,20 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
 
     return {
       ...c,
+      parentId: c.parentId || 'parent-demo-1',
       milestonesCompleted: syncedCompleted,
       milestoneEvaluations: existingEvals,
       skillLevels: normalizedSkills,
     };
   });
+
+  const demoDefaults = createInitialDemoState();
+  const accounts =
+    Array.isArray(raw.accounts) && raw.accounts.length > 0
+      ? raw.accounts
+      : demoDefaults.accounts;
+
+  const coachLinks = Array.isArray(raw.coachLinks) ? raw.coachLinks : demoDefaults.coachLinks;
 
   const studioChallenges =
     Array.isArray(raw.studioChallenges) && raw.studioChallenges.length > 0
@@ -137,6 +167,9 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
   return {
     ...raw,
     coachPin: raw.coachPin || '0000',
+    currentUserId: raw.currentUserId !== undefined ? raw.currentUserId : null,
+    accounts,
+    coachLinks,
     clubs,
     studioChallenges,
     studioRewards,
@@ -163,6 +196,9 @@ export type SyncStatus = 'local' | 'connecting' | 'synced' | 'syncing' | 'error'
 
 interface TennisStoreContextValue {
   state: FamilyState;
+  currentUser: AccountProfile | null;
+  visibleChildren: ChildProfile[];
+  hasVisibleChildren: boolean;
   activeChild: ChildProfile;
   activeChildClub: Club | null;
   childSessions: TrainingSession[];
@@ -173,8 +209,33 @@ interface TennisStoreContextValue {
   childMemories: MemoryItem[];
   childQuizAttempts: QuizAttempt[];
   childEvents: UpcomingEvent[];
+  childCoachLinks: CoachChildLink[];
+  coachPendingLinks: CoachChildLink[];
   pendingApprovalCount: number;
   todayQuizStarsEarned: number;
+
+  // User accounts (Parent & Coach login + registration)
+  registerAccount: (input: {
+    email: string;
+    password: string;
+    fullName: string;
+    role: UserRole;
+    clubName?: string;
+  }) => Promise<{ ok: boolean; error?: string; account?: AccountProfile }>;
+  loginAccount: (
+    email: string,
+    password: string,
+  ) => Promise<{ ok: boolean; error?: string; account?: AccountProfile }>;
+  quickDemoLogin: (role: UserRole) => void;
+  logoutAccount: () => Promise<void>;
+
+  // Coach <-> Child assignment via unique individual coach code
+  requestCoachAssignment: (
+    childId: string,
+    coachCode: string,
+  ) => Promise<{ ok: boolean; message: string }>;
+  respondToCoachLink: (linkId: string, accept: boolean) => void;
+  removeCoachLink: (linkId: string) => void;
 
   // Cloud & auth
   isCloudConfigured: boolean;
@@ -217,8 +278,15 @@ interface TennisStoreContextValue {
   deleteStudioReward: (templateId: string) => void;
   assignStudioRewardToChildren: (templateId: string, childIds: string[]) => number;
 
-  // Children & profile
-  addChild: (input: { name: string; age: number; currentBall: BallLevel; clubId?: string }) => void;
+  // Children & profile (created exclusively by parents)
+  addChild: (input: {
+    name: string;
+    age: number;
+    currentBall: BallLevel;
+    clubId?: string;
+    assessment?: InitialAssessmentResult;
+  }) => void;
+  applyInitialAssessment: (childId: string, assessment: InitialAssessmentResult) => void;
   updateChildProfile: (
     patch: Partial<Pick<ChildProfile, 'name' | 'age' | 'currentBall' | 'clubId'>>,
   ) => void;
@@ -477,6 +545,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
 
       const mappedChildren: ChildProfile[] = childRows.map((row) => ({
         id: row.id,
+        parentId: row.parent_id || user.id,
         name: row.name,
         age: row.age ?? 7,
         currentBall: (row.current_ball ?? 'rouge') as BallLevel,
@@ -498,12 +567,34 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         createdAt: row.created_at,
       }));
 
+      const { data: linkRows } = await sb
+        .from('coach_child_links')
+        .select('*')
+        .or(`parent_id.eq.${user.id},coach_id.eq.${user.id}`);
+
       setState((prev) =>
         normalizeFamilyState({
           familyName: familyRow.family_name || prev.familyName,
           parentPin: familyRow.parent_pin || prev.parentPin,
           coachPin: familyRow.coach_pin || prev.coachPin || '0000',
           tabletLocked: prev.tabletLocked,
+          currentUserId: prev.currentUserId ?? user.id,
+          accounts: prev.accounts,
+          coachLinks:
+            Array.isArray(linkRows) && linkRows.length > 0
+              ? linkRows.map((r) => ({
+                  id: r.id,
+                  childId: r.child_id,
+                  parentId: r.parent_id,
+                  parentName: r.parent_name ?? '',
+                  coachId: r.coach_id,
+                  coachName: r.coach_name ?? '',
+                  coachCode: r.coach_code ?? '',
+                  status: r.status,
+                  requestedAt: r.requested_at,
+                  respondedAt: r.responded_at ?? undefined,
+                }))
+              : prev.coachLinks,
           clubs: Array.isArray(familyRow.clubs) ? familyRow.clubs : prev.clubs,
           studioChallenges: Array.isArray(familyRow.studio_challenges)
             ? familyRow.studio_challenges
@@ -710,14 +801,53 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
   );
 
   // Derived selectors
+  const currentUser = useMemo(() => {
+    if (!state.currentUserId) return null;
+    return state.accounts.find((a) => a.id === state.currentUserId) ?? null;
+  }, [state.accounts, state.currentUserId]);
+
+  const visibleChildren = useMemo(() => {
+    if (!currentUser) return state.children;
+    if (currentUser.role === 'parent') {
+      return state.children.filter((c) => c.parentId === currentUser.id);
+    }
+    // Coach only sees children with an ACCEPTED assignment link
+    const acceptedIds = new Set(
+      state.coachLinks
+        .filter((l) => l.coachId === currentUser.id && l.status === 'accepted')
+        .map((l) => l.childId),
+    );
+    return state.children.filter((c) => acceptedIds.has(c.id));
+  }, [currentUser, state.children, state.coachLinks]);
+
+  const hasVisibleChildren = visibleChildren.length > 0;
+
   const activeChild = useMemo(() => {
+    if (visibleChildren.length > 0) {
+      return visibleChildren.find((c) => c.id === state.activeChildId) ?? visibleChildren[0];
+    }
     return state.children.find((c) => c.id === state.activeChildId) ?? state.children[0];
-  }, [state.children, state.activeChildId]);
+  }, [visibleChildren, state.children, state.activeChildId]);
 
   const activeChildClub = useMemo(() => {
-    if (!activeChild.clubId) return null;
+    if (!activeChild?.clubId) return null;
     return state.clubs.find((c) => c.id === activeChild.clubId) ?? null;
-  }, [state.clubs, activeChild.clubId]);
+  }, [state.clubs, activeChild?.clubId]);
+
+  const childCoachLinks = useMemo(
+    () =>
+      state.coachLinks.filter(
+        (l) => l.childId === activeChild.id && l.status !== 'declined',
+      ),
+    [state.coachLinks, activeChild.id],
+  );
+
+  const coachPendingLinks = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'coach') return [];
+    return state.coachLinks.filter(
+      (l) => l.coachId === currentUser.id && l.status === 'pending',
+    );
+  }, [state.coachLinks, currentUser]);
 
   const childSessions = useMemo(
     () =>
@@ -1108,15 +1238,263 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     return created.length;
   };
 
-  // Multi-child creation
+  // Local + Supabase Account Management (Parent & Coach)
+  const registerAccount = async (input: {
+    email: string;
+    password: string;
+    fullName: string;
+    role: UserRole;
+    clubName?: string;
+  }): Promise<{ ok: boolean; error?: string; account?: AccountProfile }> => {
+    const emailNorm = input.email.trim().toLowerCase();
+    if (!emailNorm || !input.fullName.trim() || input.password.length < 6) {
+      return { ok: false, error: 'Nom, email et mot de passe (6 car. min.) requis.' };
+    }
+    const existing = state.accounts.find((a) => a.email.toLowerCase() === emailNorm);
+    if (existing) {
+      return { ok: false, error: 'Un compte existe déjà avec cet email.' };
+    }
+
+    const coachCode =
+      input.role === 'coach'
+        ? generateUniqueCoachCode(
+            input.fullName,
+            state.accounts.map((a) => a.coachCode || '').filter(Boolean),
+          )
+        : undefined;
+
+    let accountId = uid(input.role);
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { data, error } = await sb.auth.signUp({
+        email: emailNorm,
+        password: input.password,
+      });
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      if (data.user) {
+        accountId = data.user.id;
+        await sb.from('profiles').upsert({
+          id: accountId,
+          email: emailNorm,
+          full_name: input.fullName.trim(),
+          role: input.role,
+          club_name: input.clubName?.trim() || '',
+          coach_code: coachCode ?? null,
+        });
+      }
+    }
+
+    const newAccount: AccountProfile = {
+      id: accountId,
+      email: emailNorm,
+      password: input.password,
+      fullName: input.fullName.trim(),
+      role: input.role,
+      clubName: input.clubName?.trim() || undefined,
+      coachCode,
+      createdAt: new Date().toISOString(),
+    };
+
+    setState((prev) => ({
+      ...prev,
+      accounts: [...prev.accounts, newAccount],
+      currentUserId: newAccount.id,
+    }));
+
+    return { ok: true, account: newAccount };
+  };
+
+  const loginAccount = async (
+    email: string,
+    password: string,
+  ): Promise<{ ok: boolean; error?: string; account?: AccountProfile }> => {
+    const emailNorm = email.trim().toLowerCase();
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { data, error } = await sb.auth.signInWithPassword({ email: emailNorm, password });
+      if (!error && data.user) {
+        const { data: prof } = await sb
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        if (prof) {
+          const acc: AccountProfile = {
+            id: prof.id,
+            email: prof.email,
+            fullName: prof.full_name,
+            role: prof.role as UserRole,
+            clubName: prof.club_name || undefined,
+            coachCode: prof.coach_code || undefined,
+            createdAt: prof.created_at,
+          };
+          setState((prev) => ({
+            ...prev,
+            accounts: prev.accounts.some((a) => a.id === acc.id)
+              ? prev.accounts.map((a) => (a.id === acc.id ? acc : a))
+              : [...prev.accounts, acc],
+            currentUserId: acc.id,
+          }));
+          return { ok: true, account: acc };
+        }
+      }
+    }
+
+    const found = state.accounts.find(
+      (a) => a.email.toLowerCase() === emailNorm && a.password === password,
+    );
+    if (!found) {
+      return { ok: false, error: 'Email ou mot de passe incorrect.' };
+    }
+    setState((prev) => ({ ...prev, currentUserId: found.id }));
+    return { ok: true, account: found };
+  };
+
+  const quickDemoLogin = (role: UserRole) => {
+    const target = state.accounts.find((a) => a.role === role);
+    if (target) {
+      setState((prev) => ({ ...prev, currentUserId: target.id }));
+    }
+  };
+
+  const logoutAccount = async () => {
+    const sb = getSupabaseClient();
+    if (sb && supabaseUser) {
+      await sb.auth.signOut();
+      setSupabaseUser(null);
+      setSyncStatus('local');
+    }
+    setState((prev) => ({ ...prev, currentUserId: null }));
+  };
+
+  // Coach <-> Child assignment via Coach's unique individual code
+  const requestCoachAssignment = async (
+    childId: string,
+    coachCodeRaw: string,
+  ): Promise<{ ok: boolean; message: string }> => {
+    const code = coachCodeRaw.trim().toUpperCase();
+    if (!code) return { ok: false, message: 'Merci de saisir un code coach.' };
+    if (!currentUser || currentUser.role !== 'parent') {
+      return { ok: false, message: 'Seul un parent connecté peut assigner un coach.' };
+    }
+
+    let coachAccount = state.accounts.find(
+      (a) => a.role === 'coach' && (a.coachCode || '').toUpperCase() === code,
+    );
+
+    const sb = getSupabaseClient();
+    if (!coachAccount && sb && supabaseUser) {
+      const { data } = await sb.rpc('find_coach_by_code', { code_input: code });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) {
+        coachAccount = {
+          id: row.id,
+          email: '',
+          fullName: row.full_name,
+          role: 'coach',
+          clubName: row.club_name || undefined,
+          coachCode: row.coach_code,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    }
+
+    if (!coachAccount) {
+      return {
+        ok: false,
+        message: `Aucun coach trouvé avec le code « ${code} ». Vérifie le code communiqué par le coach.`,
+      };
+    }
+
+    const existingLink = state.coachLinks.find(
+      (l) => l.childId === childId && l.coachId === coachAccount.id && l.status !== 'declined',
+    );
+    if (existingLink) {
+      return {
+        ok: false,
+        message:
+          existingLink.status === 'accepted'
+            ? `${coachAccount.fullName} est déjà assigné(e) à cet enfant.`
+            : `Une demande est déjà en attente chez ${coachAccount.fullName}.`,
+      };
+    }
+
+    const newLink: CoachChildLink = {
+      id: uid('link'),
+      childId,
+      parentId: currentUser.id,
+      parentName: currentUser.fullName,
+      coachId: coachAccount.id,
+      coachName: coachAccount.fullName,
+      coachCode: coachAccount.coachCode || code,
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+    };
+
+    setState((prev) => ({
+      ...prev,
+      coachLinks: [newLink, ...prev.coachLinks],
+    }));
+
+    void syncCloudOp(async (client) => {
+      await client.from('coach_child_links').upsert({
+        id: newLink.id,
+        child_id: newLink.childId,
+        parent_id: newLink.parentId,
+        parent_name: newLink.parentName,
+        coach_id: newLink.coachId,
+        coach_name: newLink.coachName,
+        coach_code: newLink.coachCode,
+        status: 'pending',
+      });
+    });
+
+    return {
+      ok: true,
+      message: `Demande envoyée à ${coachAccount.fullName} ! Il/elle n'a plus qu'à l'accepter dans son espace Coach.`,
+    };
+  };
+
+  const respondToCoachLink = (linkId: string, accept: boolean) => {
+    const now = new Date().toISOString();
+    const nextStatus = accept ? 'accepted' : 'declined';
+    setState((prev) => ({
+      ...prev,
+      coachLinks: prev.coachLinks.map((l) =>
+        l.id === linkId ? { ...l, status: nextStatus, respondedAt: now } : l,
+      ),
+    }));
+    void syncCloudOp(async (sb) => {
+      await sb
+        .from('coach_child_links')
+        .update({ status: nextStatus, responded_at: now })
+        .eq('id', linkId);
+    });
+  };
+
+  const removeCoachLink = (linkId: string) => {
+    setState((prev) => ({
+      ...prev,
+      coachLinks: prev.coachLinks.filter((l) => l.id !== linkId),
+    }));
+    void syncCloudOp(async (sb) => {
+      await sb.from('coach_child_links').delete().eq('id', linkId);
+    });
+  };
+
+  // Multi-child creation (Parents only)
   const addChild = (input: {
     name: string;
     age: number;
     currentBall: BallLevel;
     clubId?: string;
+    assessment?: InitialAssessmentResult;
   }) => {
     const template = createInitialDemoState().children[0];
     const newId = uid('child');
+    const ownerParentId = currentUser?.role === 'parent' ? currentUser.id : 'parent-demo-1';
     const assignedClubId = input.clubId || state.clubs[0]?.id;
     const assignedClub = assignedClubId
       ? state.clubs.find((c) => c.id === assignedClubId)
@@ -1125,9 +1503,10 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     const newChild: ChildProfile = {
       ...template,
       id: newId,
+      parentId: ownerParentId,
       name: input.name.trim(),
       age: input.age,
-      currentBall: input.currentBall,
+      currentBall: input.assessment?.recommendedBall ?? input.currentBall,
       clubId: assignedClubId,
       clubInfo: assignedClub
         ? {
@@ -1142,7 +1521,10 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       starsBalance: 15,
       totalStarsEarned: 15,
       streakCount: 0,
-      milestonesCompleted: [],
+      milestonesCompleted: input.assessment?.milestonesCompleted ?? [],
+      milestoneEvaluations: input.assessment?.milestoneEvaluations ?? {},
+      skillLevels: input.assessment?.skillLevels ?? template.skillLevels,
+      initialAssessmentCompleted: Boolean(input.assessment),
       createdAt: new Date().toISOString(),
     };
     setState((prev) => ({
@@ -1155,6 +1537,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       await sb.from('children').insert({
         id: newId,
         family_id: familyDbIdRef.current,
+        parent_id: ownerParentId,
         name: newChild.name,
         age: newChild.age,
         current_ball: newChild.currentBall,
@@ -1165,12 +1548,33 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
         child_theme: newChild.childTheme,
         avatar_config: newChild.avatarConfig,
         unlocked_items: newChild.unlockedItems,
-        milestones_completed: [],
+        milestones_completed: newChild.milestonesCompleted,
+        milestone_evaluations: newChild.milestoneEvaluations,
         skill_levels: newChild.skillLevels,
         club_info: newChild.clubInfo,
         equipment_info: newChild.equipmentInfo,
       });
     });
+  };
+
+  const applyInitialAssessment = (childId: string, assessment: InitialAssessmentResult) => {
+    patchChild(
+      childId,
+      (c) => ({
+        ...c,
+        currentBall: assessment.recommendedBall,
+        milestonesCompleted: assessment.milestonesCompleted,
+        milestoneEvaluations: assessment.milestoneEvaluations,
+        skillLevels: assessment.skillLevels,
+        initialAssessmentCompleted: true,
+      }),
+      {
+        current_ball: assessment.recommendedBall,
+        milestones_completed: assessment.milestonesCompleted,
+        milestone_evaluations: assessment.milestoneEvaluations,
+        skill_levels: assessment.skillLevels,
+      },
+    );
   };
 
   const updateChildProfile = (
@@ -1864,6 +2268,9 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
 
   const value: TennisStoreContextValue = {
     state,
+    currentUser,
+    visibleChildren,
+    hasVisibleChildren,
     activeChild,
     activeChildClub,
     childSessions,
@@ -1874,8 +2281,17 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     childMemories,
     childQuizAttempts,
     childEvents,
+    childCoachLinks,
+    coachPendingLinks,
     pendingApprovalCount,
     todayQuizStarsEarned,
+    registerAccount,
+    loginAccount,
+    quickDemoLogin,
+    logoutAccount,
+    requestCoachAssignment,
+    respondToCoachLink,
+    removeCoachLink,
     isCloudConfigured,
     supabaseUser,
     syncStatus,
@@ -1903,6 +2319,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     deleteStudioReward,
     assignStudioRewardToChildren,
     addChild,
+    applyInitialAssessment,
     updateChildProfile,
     updateChildTheme,
     updateChildAvatar,

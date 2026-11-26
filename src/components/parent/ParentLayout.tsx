@@ -3,19 +3,23 @@ import {
   Award,
   BookOpen,
   CalendarDays,
-  ClipboardCheck,
+  ClipboardList,
   Cloud,
   CloudOff,
   FileText,
   LayoutDashboard,
   Lock,
+  LogOut,
+  Plus,
   Settings,
   Sparkles,
   Target,
   TrendingUp,
+  UserPlus,
   Wand2,
 } from 'lucide-react';
 import { useTennisStore } from '../../lib/store';
+import { InitialAssessmentModal } from '../shared/InitialAssessmentModal';
 import { ParentChallenges } from './ParentChallenges';
 import { ParentDashboard } from './ParentDashboard';
 import { ParentNotebook } from './ParentNotebook';
@@ -37,26 +41,32 @@ type ParentTab =
 
 interface ParentLayoutProps {
   onSwitchToChild: (lockTablet?: boolean) => void;
-  onSwitchToCoach: () => void;
   onOpenPrintReport: () => void;
   onOpenAuthModal: () => void;
 }
 
 export function ParentLayout({
   onSwitchToChild,
-  onSwitchToCoach,
   onOpenPrintReport,
   onOpenAuthModal,
 }: ParentLayoutProps) {
   const {
     state,
+    currentUser,
+    visibleChildren,
+    hasVisibleChildren,
     activeChild,
     pendingApprovalCount,
     supabaseUser,
     syncStatus,
     setActiveChildId,
+    logoutAccount,
   } = useTennisStore();
+
   const [activeTab, setActiveTab] = useState<ParentTab>('dashboard');
+  const [assessmentModal, setAssessmentModal] = useState<
+    { mode: 'create' } | { mode: 'reevaluate'; childId: string; childName: string } | null
+  >(null);
 
   const childNavItems: {
     id: Exclude<ParentTab, 'studio' | 'settings'>;
@@ -70,7 +80,7 @@ export function ParentLayout({
       label: 'Tableau de bord',
       shortLabel: 'Accueil',
       icon: LayoutDashboard,
-      badge: pendingApprovalCount,
+      badge: hasVisibleChildren ? pendingApprovalCount : 0,
     },
     { id: 'skills', label: 'Galaxie & TTCA', shortLabel: 'TTCA', icon: TrendingUp },
     { id: 'sessions', label: 'Séances (30s)', shortLabel: 'Séances', icon: CalendarDays },
@@ -78,11 +88,13 @@ export function ParentLayout({
     { id: 'tournaments', label: 'Plateaux & Photos', shortLabel: 'Plateaux', icon: Award },
     {
       id: 'notebook',
-      label: `Carnet de ${activeChild.name}`,
+      label: hasVisibleChildren ? `Carnet de ${activeChild.name}` : 'Carnet Enfant',
       shortLabel: 'Carnet',
       icon: BookOpen,
     },
   ];
+
+  const isGlobalTab = activeTab === 'studio' || activeTab === 'settings';
 
   return (
     <div className="parent-world flex min-h-dvh flex-col lg:flex-row">
@@ -94,34 +106,59 @@ export function ParentLayout({
             alt="Galaxie Tennis"
             className="h-10 w-10 rounded-xl object-cover shadow"
           />
-          <div>
-            <p className="parent-display text-lg font-bold leading-tight">Galaxie Tennis</p>
-            <p className="text-[11px] font-medium text-emerald-200">{state.familyName}</p>
+          <div className="min-w-0">
+            <p className="parent-display truncate text-lg font-bold leading-tight">
+              {currentUser?.fullName || state.familyName}
+            </p>
+            <p className="truncate text-[11px] font-medium text-emerald-200">
+              {currentUser?.email || 'Compte Parent'}
+            </p>
           </div>
         </div>
 
-        {/* Multi-child selector */}
+        {/* Multi-child selector + Add child button */}
         <div className="border-b border-white/10 px-4 py-3.5">
-          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-emerald-200/80">
-            Enfant sélectionné
-          </label>
-          <select
-            value={activeChild.id}
-            onChange={(e) => setActiveChildId(e.target.value)}
-            className="w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white outline-none ring-1 ring-white/15 focus:ring-[#F4B942]"
-          >
-            {state.children.map((c) => (
-              <option key={c.id} value={c.id} className="text-[#1F2421]">
-                🎾 {c.name} ({c.age} ans)
-              </option>
-            ))}
-          </select>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-200/80">
+              Enfant sélectionné
+            </label>
+            <button
+              type="button"
+              onClick={() => setAssessmentModal({ mode: 'create' })}
+              className="inline-flex items-center gap-0.5 rounded-md bg-white/15 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-white/25"
+              title="Créer un nouvel enfant avec le questionnaire d'évaluation"
+            >
+              <Plus className="h-3 w-3" /> Enfant
+            </button>
+          </div>
+          {hasVisibleChildren ? (
+            <select
+              value={activeChild.id}
+              onChange={(e) => setActiveChildId(e.target.value)}
+              className="w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-bold text-white outline-none ring-1 ring-white/15 focus:ring-[#F4B942]"
+            >
+              {visibleChildren.map((c) => (
+                <option key={c.id} value={c.id} className="text-[#1F2421]">
+                  🎾 {c.name} ({c.age} ans)
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAssessmentModal({ mode: 'create' })}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#C85A32] px-3 py-2 text-xs font-bold text-white hover:bg-[#A54522]"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Ajouter mon 1er enfant
+            </button>
+          )}
         </div>
 
         {/* Nav Links — Separated into Child-specific & General (Studio -> Settings) */}
         <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigation parent">
           <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider text-emerald-200/75">
-            Suivi de {activeChild.name}
+            {hasVisibleChildren ? `Suivi de ${activeChild.name}` : 'Suivi Enfant'}
           </p>
           <div className="space-y-1">
             {childNavItems.map((item) => {
@@ -206,31 +243,35 @@ export function ParentLayout({
             </span>
           </button>
 
-          <button
-            type="button"
-            onClick={onSwitchToCoach}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-xs font-extrabold text-[#1E4D3B] shadow-xs transition hover:bg-emerald-50"
-          >
-            <ClipboardCheck className="h-4 w-4 text-[#C85A32]" />
-            Ouvrir Vue Coach (Acquis)
-          </button>
+          {hasVisibleChildren && (
+            <>
+              <button
+                type="button"
+                onClick={() => onSwitchToChild(false)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F4B942] px-3.5 py-2.5 text-xs font-extrabold text-[#1F2421] shadow-xs transition hover:bg-[#E5AA33]"
+              >
+                <Sparkles className="h-4 w-4" />
+                Ouvrir Vue Enfant ({activeChild.name})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSwitchToChild(true)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-white/10"
+              >
+                <Lock className="h-3.5 w-3.5" />
+                Verrouiller Tablette Enfant
+              </button>
+            </>
+          )}
 
           <button
             type="button"
-            onClick={() => onSwitchToChild(false)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F4B942] px-3.5 py-2.5 text-xs font-extrabold text-[#1F2421] shadow-xs transition hover:bg-[#E5AA33]"
+            onClick={() => void logoutAccount()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-black/15 px-3 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-black/25"
           >
-            <Sparkles className="h-4 w-4" />
-            Ouvrir Vue Enfant ({activeChild.name})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSwitchToChild(true)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-[11px] font-semibold text-emerald-100 hover:bg-white/10"
-          >
-            <Lock className="h-3.5 w-3.5" />
-            Verrouiller Tablette Enfant
+            <LogOut className="h-3.5 w-3.5" />
+            Déconnexion / Changer de compte
           </button>
         </div>
       </aside>
@@ -239,35 +280,39 @@ export function ParentLayout({
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#E8DDD0] bg-[#1E4D3B] px-3 py-3 text-white lg:hidden">
         <div className="flex items-center gap-2">
           <img src="./app-icon.jpg" alt="" className="h-8 w-8 rounded-lg object-cover" />
-          <select
-            value={activeChild.id}
-            onChange={(e) => setActiveChildId(e.target.value)}
-            className="rounded-lg bg-white/10 px-2 py-1 text-sm font-bold text-white outline-none"
-          >
-            {state.children.map((c) => (
-              <option key={c.id} value={c.id} className="text-[#1F2421]">
-                {c.name} ({c.age}a)
-              </option>
-            ))}
-          </select>
+          {hasVisibleChildren ? (
+            <select
+              value={activeChild.id}
+              onChange={(e) => setActiveChildId(e.target.value)}
+              className="rounded-lg bg-white/10 px-2 py-1 text-sm font-bold text-white outline-none"
+            >
+              {visibleChildren.map((c) => (
+                <option key={c.id} value={c.id} className="text-[#1F2421]">
+                  {c.name} ({c.age}a)
+                </option>
+              ))}
+            </select>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAssessmentModal({ mode: 'create' })}
+              className="rounded-lg bg-[#C85A32] px-2.5 py-1 text-xs font-bold text-white"
+            >
+              + Enfant
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onOpenPrintReport}
-            className="rounded-lg bg-white/10 p-2 text-white"
-            title="Fiche Bilan PDF"
-          >
-            <FileText className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onSwitchToCoach}
-            className="rounded-lg bg-white p-2 text-[#1E4D3B]"
-            title="Ouvrir Vue Coach (Validation acquis)"
-          >
-            <ClipboardCheck className="h-4 w-4" />
-          </button>
+          {hasVisibleChildren && (
+            <button
+              type="button"
+              onClick={onOpenPrintReport}
+              className="rounded-lg bg-white/10 p-2 text-white"
+              title="Fiche Bilan PDF"
+            >
+              <FileText className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setActiveTab('studio')}
@@ -288,44 +333,90 @@ export function ParentLayout({
           >
             <Settings className="h-4 w-4" />
           </button>
+          {hasVisibleChildren && (
+            <button
+              type="button"
+              onClick={() => onSwitchToChild(false)}
+              className="inline-flex items-center gap-1 rounded-xl bg-[#F4B942] px-2.5 py-1.5 text-xs font-extrabold text-[#1F2421]"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Enfant
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => onSwitchToChild(false)}
-            className="inline-flex items-center gap-1 rounded-xl bg-[#F4B942] px-2.5 py-1.5 text-xs font-extrabold text-[#1F2421]"
+            onClick={() => void logoutAccount()}
+            className="rounded-lg bg-white/10 p-2 text-white"
+            title="Déconnexion"
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            Enfant
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </header>
 
       {/* Main Content Area */}
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-24 lg:px-8 lg:py-8 lg:pb-10">
-        {activeTab === 'dashboard' && (
-          <ParentDashboard
-            onNavigate={setActiveTab}
-            onOpenPrintReport={onOpenPrintReport}
-          />
+        {!hasVisibleChildren && !isGlobalTab ? (
+          <div className="parent-card mx-auto max-w-xl p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-[#FDF0EB] text-[#C85A32]">
+              <ClipboardList className="h-8 w-8" />
+            </div>
+            <h1 className="parent-display mt-4 text-3xl font-bold text-[#1F2421]">
+              Bienvenue {currentUser?.fullName || 'Parent'} !
+            </h1>
+            <p className="mt-2 text-sm text-[#5C6660]">
+              Crée le profil de ton premier enfant et réponds au{' '}
+              <strong>questionnaire d’évaluation initial FFT Galaxie Tennis</strong> (6 questions)
+              pour déterminer sa balle de départ et préparer sa carte d’aventure !
+            </p>
+            <button
+              type="button"
+              onClick={() => setAssessmentModal({ mode: 'create' })}
+              className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#C85A32] px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#A54522]"
+            >
+              <UserPlus className="h-5 w-5" />
+              Ajouter mon enfant & lancer le questionnaire
+            </button>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'dashboard' && (
+              <ParentDashboard
+                onNavigate={setActiveTab}
+                onOpenPrintReport={onOpenPrintReport}
+              />
+            )}
+            {activeTab === 'skills' && <ParentSkills key={activeChild.id} />}
+            {activeTab === 'sessions' && <ParentSessions key={activeChild.id} />}
+            {activeTab === 'challenges' && (
+              <ParentChallenges onOpenStudio={() => setActiveTab('studio')} />
+            )}
+            {activeTab === 'tournaments' && <ParentTournaments />}
+            {activeTab === 'notebook' && (
+              <ParentNotebook
+                key={activeChild.id}
+                onOpenSettings={() => setActiveTab('settings')}
+                onOpenAssessment={() =>
+                  setAssessmentModal({
+                    mode: 'reevaluate',
+                    childId: activeChild.id,
+                    childName: activeChild.name,
+                  })
+                }
+              />
+            )}
+            {activeTab === 'studio' && <ParentStudio />}
+            {activeTab === 'settings' && (
+              <ParentSettings
+                onOpenAuthModal={onOpenAuthModal}
+                onOpenNewChildWizard={() => setAssessmentModal({ mode: 'create' })}
+              />
+            )}
+          </>
         )}
-        {activeTab === 'skills' && (
-          <ParentSkills key={activeChild.id} onOpenCoachMode={onSwitchToCoach} />
-        )}
-        {activeTab === 'sessions' && <ParentSessions key={activeChild.id} />}
-        {activeTab === 'challenges' && (
-          <ParentChallenges onOpenStudio={() => setActiveTab('studio')} />
-        )}
-        {activeTab === 'tournaments' && <ParentTournaments />}
-        {activeTab === 'notebook' && (
-          <ParentNotebook
-            key={activeChild.id}
-            onOpenSettings={() => setActiveTab('settings')}
-          />
-        )}
-        {activeTab === 'studio' && <ParentStudio />}
-        {activeTab === 'settings' && <ParentSettings onOpenAuthModal={onOpenAuthModal} />}
       </main>
 
-      {/* Mobile Bottom Nav (Child-specific sections) */}
+      {/* Mobile Bottom Nav */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 border-t border-[#E8DDD0] bg-white/95 px-1.5 py-2 backdrop-blur-md lg:hidden"
         aria-label="Navigation mobile parent"
@@ -355,6 +446,20 @@ export function ParentLayout({
           })}
         </div>
       </nav>
+
+      {/* Initial Assessment / New Child Wizard Modal */}
+      {assessmentModal && (
+        <InitialAssessmentModal
+          mode={assessmentModal.mode}
+          existingChildId={
+            assessmentModal.mode === 'reevaluate' ? assessmentModal.childId : undefined
+          }
+          existingChildName={
+            assessmentModal.mode === 'reevaluate' ? assessmentModal.childName : undefined
+          }
+          onClose={() => setAssessmentModal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,21 @@
 -- ============================================================================
 -- GALAXIE TENNIS SUIVI — Schéma PostgreSQL complet pour Supabase
--- Copie-colle ce script dans Supabase > SQL Editor > New Query puis clique Run
+-- Supporte comptes Parent & Coach (login), Code Unique Coach, Assignations,
+-- Grille officielle FFT TTCA, Clubs, Studio et Realtime.
 -- ============================================================================
 
--- Extension UUID
 create extension if not exists "pgcrypto";
+
+-- 0. Profils utilisateurs (Parent ou Coach avec code unique individuel)
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  full_name text not null,
+  role text not null check (role in ('parent', 'coach')),
+  club_name text default '',
+  coach_code text unique,
+  created_at timestamptz not null default now()
+);
 
 -- 1. Familles (1 famille par compte parent Supabase)
 create table if not exists public.families (
@@ -20,10 +31,11 @@ create table if not exists public.families (
   updated_at timestamptz not null default now()
 );
 
--- 2. Enfants (multi-enfants prêt)
+-- 2. Enfants (créés par les parents)
 create table if not exists public.children (
   id uuid primary key default gen_random_uuid(),
   family_id uuid not null references public.families(id) on delete cascade,
+  parent_id uuid references auth.users(id) on delete cascade,
   name text not null,
   age integer not null default 7,
   current_ball text not null default 'rouge' check (current_ball in ('blanc', 'violet', 'rouge', 'orange', 'vert')),
@@ -41,6 +53,21 @@ create table if not exists public.children (
   equipment_info jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+-- 2b. Assignations Coach <-> Enfant (via code unique coach + acceptation coach)
+create table if not exists public.coach_child_links (
+  id uuid primary key default gen_random_uuid(),
+  child_id uuid not null references public.children(id) on delete cascade,
+  parent_id uuid not null references auth.users(id) on delete cascade,
+  parent_name text not null default '',
+  coach_id uuid not null references auth.users(id) on delete cascade,
+  coach_name text not null default '',
+  coach_code text not null,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
+  requested_at timestamptz not null default now(),
+  responded_at timestamptz,
+  unique (child_id, coach_id)
 );
 
 -- 3. Séances d'entraînement
@@ -91,7 +118,7 @@ create table if not exists public.tournaments (
   created_at timestamptz not null default now()
 );
 
--- 6. Boutique de récompenses réelles (définies par le parent)
+-- 6. Boutique de récompenses réelles
 create table if not exists public.rewards (
   id uuid primary key default gen_random_uuid(),
   child_id uuid not null references public.children(id) on delete cascade,
@@ -116,7 +143,7 @@ create table if not exists public.reward_redemptions (
   delivered_at timestamptz
 );
 
--- 8. Galerie souvenirs (photos & liens vidéos)
+-- 8. Galerie souvenirs
 create table if not exists public.memories (
   id uuid primary key default gen_random_uuid(),
   child_id uuid not null references public.children(id) on delete cascade,
@@ -130,7 +157,7 @@ create table if not exists public.memories (
   created_at timestamptz not null default now()
 );
 
--- 9. Tentatives de Mini-Quiz (limite quotidienne d'étoiles)
+-- 9. Tentatives de Mini-Quiz
 create table if not exists public.quiz_attempts (
   id uuid primary key default gen_random_uuid(),
   child_id uuid not null references public.children(id) on delete cascade,
@@ -155,11 +182,13 @@ create table if not exists public.upcoming_events (
 );
 
 -- ============================================================================
--- ROW LEVEL SECURITY (RLS) — Chaque famille n'accède qu'à ses propres données
+-- FONCTIONS HELPER & ROW LEVEL SECURITY (RLS)
 -- ============================================================================
 
+alter table public.profiles enable row level security;
 alter table public.families enable row level security;
 alter table public.children enable row level security;
+alter table public.coach_child_links enable row level security;
 alter table public.sessions enable row level security;
 alter table public.challenges enable row level security;
 alter table public.tournaments enable row level security;
@@ -169,7 +198,21 @@ alter table public.memories enable row level security;
 alter table public.quiz_attempts enable row level security;
 alter table public.upcoming_events enable row level security;
 
--- Helper function : vérifie si l'enfant appartient à l'utilisateur connecté
+-- Recherche sécurisée d'un coach par son code unique individuel
+create or replace function public.find_coach_by_code(code_input text)
+returns table (id uuid, full_name text, club_name text, coach_code text)
+language sql
+security definer
+stable
+as $$
+  select p.id, p.full_name, p.club_name, p.coach_code
+  from public.profiles p
+  where p.role = 'coach'
+    and upper(p.coach_code) = upper(trim(code_input))
+  limit 1;
+$$;
+
+-- Vérifie si l'enfant appartient au parent connecté
 create or replace function public.is_my_child(target_child_id uuid)
 returns boolean
 language sql
@@ -185,22 +228,60 @@ as $$
   );
 $$;
 
+-- Vérifie si le coach connecté a une assignation ACCEPTÉE sur cet enfant
+create or replace function public.is_assigned_coach(target_child_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1
+    from public.coach_child_links l
+    where l.child_id = target_child_id
+      and l.coach_id = auth.uid()
+      and l.status = 'accepted'
+  );
+$$;
+
+-- Policies profiles
+create policy "profiles_own_all" on public.profiles
+  for all using (id = auth.uid()) with check (id = auth.uid());
+
 -- Policies families
 create policy "families_owner_all" on public.families
   for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
--- Policies children
-create policy "children_owner_all" on public.children
+-- Policies children (Parent propriétaire + Coach accepté pour valider acquis)
+create policy "children_parent_all" on public.children
   for all using (
     exists (select 1 from public.families f where f.id = family_id and f.owner_id = auth.uid())
   ) with check (
     exists (select 1 from public.families f where f.id = family_id and f.owner_id = auth.uid())
   );
 
--- Policies tables enfants
-create policy "sessions_owner_all" on public.sessions
-  for all using (public.is_my_child(child_id)) with check (public.is_my_child(child_id));
+create policy "children_coach_select_update" on public.children
+  for select using (public.is_assigned_coach(id));
 
+create policy "children_coach_update_acquis" on public.children
+  for update using (public.is_assigned_coach(id)) with check (public.is_assigned_coach(id));
+
+-- Policies coach_child_links
+create policy "links_parent_manage" on public.coach_child_links
+  for all using (parent_id = auth.uid()) with check (parent_id = auth.uid());
+
+create policy "links_coach_view_respond" on public.coach_child_links
+  for select using (coach_id = auth.uid());
+
+create policy "links_coach_update_status" on public.coach_child_links
+  for update using (coach_id = auth.uid()) with check (coach_id = auth.uid());
+
+-- Policies sessions (Parent + Coach accepté)
+create policy "sessions_parent_or_coach" on public.sessions
+  for all using (public.is_my_child(child_id) or public.is_assigned_coach(child_id))
+  with check (public.is_my_child(child_id) or public.is_assigned_coach(child_id));
+
+-- Policies autres tables enfant (Parent uniquement)
 create policy "challenges_owner_all" on public.challenges
   for all using (public.is_my_child(child_id)) with check (public.is_my_child(child_id));
 
@@ -223,7 +304,7 @@ create policy "upcoming_events_owner_all" on public.upcoming_events
   for all using (public.is_my_child(child_id)) with check (public.is_my_child(child_id));
 
 -- ============================================================================
--- STORAGE BUCKET POUR LES PHOTOS SOUVENIRS
+-- STORAGE & REALTIME
 -- ============================================================================
 
 insert into storage.buckets (id, name, public)
@@ -242,11 +323,8 @@ create policy "Users can delete own tennis memories"
 on storage.objects for delete to authenticated
 using (bucket_id = 'tennis-memories' and (storage.foldername(name))[1] = auth.uid()::text);
 
--- ============================================================================
--- REALTIME (Synchronisation instantanée Téléphone Parent <-> Tablette Enfant)
--- ============================================================================
-
 alter publication supabase_realtime add table public.children;
+alter publication supabase_realtime add table public.coach_child_links;
 alter publication supabase_realtime add table public.sessions;
 alter publication supabase_realtime add table public.challenges;
 alter publication supabase_realtime add table public.reward_redemptions;

@@ -18,22 +18,25 @@ import {
 } from 'lucide-react';
 import { GALAXIE_LEVELS } from '../../data/galaxieCatalog';
 import { useTennisStore } from '../../lib/store';
-import type { BallLevel } from '../../types/tennis';
 
 interface ParentSettingsProps {
   onOpenAuthModal: () => void;
+  onOpenNewChildWizard: () => void;
 }
 
-export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
+export function ParentSettings({
+  onOpenAuthModal,
+  onOpenNewChildWizard,
+}: ParentSettingsProps) {
   const {
     state,
+    visibleChildren,
     activeChild,
     supabaseUser,
     setActiveChildId,
     addClub,
     updateClub,
     deleteClub,
-    addChild,
     updateFamilyName,
     updateParentPin,
     updateCoachPin,
@@ -44,10 +47,6 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
   } = useTennisStore();
 
   const [familyNameDraft, setFamilyNameDraft] = useState(state.familyName);
-  const [newChildName, setNewChildName] = useState('');
-  const [newChildAge, setNewChildAge] = useState(6);
-  const [newChildBall, setNewChildBall] = useState<BallLevel>('violet');
-  const [newChildClubId, setNewChildClubId] = useState(state.clubs[0]?.id ?? '');
   const [pinDraft, setPinDraft] = useState(state.parentPin);
   const [coachPinDraft, setCoachPinDraft] = useState(state.coachPin);
 
@@ -106,20 +105,6 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
     if (!familyNameDraft.trim()) return;
     updateFamilyName(familyNameDraft.trim());
     notify('Nom de la famille enregistré !');
-  };
-
-  const handleAddChild = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newChildName.trim()) return;
-    const createdName = newChildName.trim();
-    addChild({
-      name: createdName,
-      age: newChildAge,
-      currentBall: newChildBall,
-      clubId: newChildClubId || undefined,
-    });
-    setNewChildName('');
-    notify(`Profil de ${createdName} créé et sélectionné !`);
   };
 
   const handleExport = () => {
@@ -365,15 +350,25 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
           </form>
 
           <section className="parent-card space-y-4 p-5">
-            <h2 className="parent-display flex items-center gap-2 text-lg font-bold text-[#1F2421]">
-              <Users className="h-4 w-4 text-[#C85A32]" />
-              Enfants suivis ({state.children.length})
-            </h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="parent-display flex items-center gap-2 text-lg font-bold text-[#1F2421]">
+                <Users className="h-4 w-4 text-[#C85A32]" />
+                Mes enfants suivis ({visibleChildren.length})
+              </h2>
+              <button
+                type="button"
+                onClick={onOpenNewChildWizard}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#1E4D3B] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Ajouter + Questionnaire initial
+              </button>
+            </div>
             <div className="space-y-2">
-              {state.children.map((c) => {
+              {visibleChildren.map((c) => {
                 const ball = GALAXIE_LEVELS.find((l) => l.id === c.currentBall);
                 const club = state.clubs.find((cl) => cl.id === c.clubId);
-                const isSelected = c.id === activeChild.id;
+                const isSelected = c.id === activeChild?.id;
                 return (
                   <button
                     key={c.id}
@@ -406,62 +401,6 @@ export function ParentSettings({ onOpenAuthModal }: ParentSettingsProps) {
                 );
               })}
             </div>
-
-            <form onSubmit={handleAddChild} className="space-y-2.5 border-t border-[#EFE6DA] pt-4">
-              <h3 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#5C6660]">
-                <UserPlus className="h-3.5 w-3.5 text-[#1E4D3B]" />
-                Ajouter un autre enfant (frère / sœur)
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  required
-                  value={newChildName}
-                  onChange={(e) => setNewChildName(e.target.value)}
-                  placeholder="Prénom"
-                  className="col-span-2 rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none focus:border-[#C85A32]"
-                />
-                <input
-                  type="number"
-                  min={3}
-                  max={18}
-                  value={newChildAge}
-                  onChange={(e) => setNewChildAge(Number(e.target.value))}
-                  className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-sm outline-none"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={newChildBall}
-                  onChange={(e) => setNewChildBall(e.target.value as BallLevel)}
-                  className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-xs font-semibold outline-none"
-                >
-                  {GALAXIE_LEVELS.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.emoji} {l.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={newChildClubId}
-                  onChange={(e) => setNewChildClubId(e.target.value)}
-                  className="rounded-xl border border-[#E8DDD0] bg-[#FAF6F0] px-3 py-2 text-xs font-semibold outline-none"
-                >
-                  <option value="">Sans club assigné</option>
-                  {state.clubs.map((cl) => (
-                    <option key={cl.id} value={cl.id}>
-                      🏟️ {cl.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-[#1E4D3B] px-4 py-2 text-xs font-bold text-white hover:bg-[#163A2C]"
-              >
-                + Ajouter cet enfant
-              </button>
-            </form>
           </section>
         </div>
 

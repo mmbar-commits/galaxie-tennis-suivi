@@ -4,9 +4,13 @@ export type ChildTheme = 'terre-battue' | 'galaxie' | 'gazon';
 
 export type AppMode = 'child' | 'parent' | 'coach';
 
+export type UserRole = 'parent' | 'coach';
+
 export type TtcaAxis = 'technique' | 'tactique' | 'comportement' | 'arbitrage';
 
 export type AcquisitionStatus = 'non_evalue' | 'en_cours' | 'acquis';
+
+export type CoachLinkStatus = 'pending' | 'accepted' | 'declined';
 
 export type SkillKey =
   | 'coup_droit'
@@ -19,6 +23,30 @@ export type SkillKey =
 export type SessionType = 'cours_club' | 'jeu_famille' | 'stage' | 'plateau';
 
 export type ChildMood = 'adore' | 'fiere' | 'rigolo' | 'fatiguee' | 'difficile';
+
+export interface AccountProfile {
+  id: string;
+  email: string;
+  password?: string; // Used only in local demo mode; Supabase uses auth.users
+  fullName: string;
+  role: UserRole;
+  clubName?: string;
+  coachCode?: string; // Unique individual code for coaches (e.g. COACH-CAM26)
+  createdAt: string;
+}
+
+export interface CoachChildLink {
+  id: string;
+  childId: string;
+  parentId: string;
+  parentName: string;
+  coachId: string;
+  coachName: string;
+  coachCode: string;
+  status: CoachLinkStatus;
+  requestedAt: string;
+  respondedAt?: string;
+}
 
 export interface AvatarConfig {
   skinColor: string;
@@ -93,6 +121,7 @@ export interface SkillEntry {
 
 export interface ChildProfile {
   id: string;
+  parentId: string;
   name: string;
   age: number;
   currentBall: BallLevel;
@@ -108,6 +137,7 @@ export interface ChildProfile {
   skillLevels: Record<SkillKey, SkillEntry>;
   clubInfo: ClubInfo;
   equipmentInfo: EquipmentInfo;
+  initialAssessmentCompleted?: boolean;
   createdAt: string;
 }
 
@@ -219,7 +249,10 @@ export interface FamilyState {
   parentPin: string;
   coachPin: string;
   tabletLocked: boolean;
+  currentUserId: string | null;
   activeChildId: string;
+  accounts: AccountProfile[];
+  coachLinks: CoachChildLink[];
   clubs: Club[];
   studioChallenges: StudioChallengeTemplate[];
   studioRewards: StudioRewardTemplate[];
