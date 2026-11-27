@@ -2,15 +2,17 @@ export type BallLevel = 'blanc' | 'violet' | 'rouge' | 'orange' | 'vert';
 
 export type ChildTheme = 'terre-battue' | 'galaxie' | 'gazon';
 
-export type AppMode = 'child' | 'parent' | 'coach';
+export type AppMode = 'child' | 'parent' | 'coach' | 'admin';
 
-export type UserRole = 'parent' | 'coach';
+export type UserRole = 'parent' | 'coach' | 'admin';
 
 export type TtcaAxis = 'technique' | 'tactique' | 'comportement' | 'arbitrage';
 
 export type AcquisitionStatus = 'non_evalue' | 'en_cours' | 'acquis';
 
 export type CoachLinkStatus = 'pending' | 'accepted' | 'declined';
+
+export type ClubProposalStatus = 'pending' | 'approved' | 'merged' | 'rejected';
 
 export type SkillKey =
   | 'coup_droit'
@@ -27,10 +29,19 @@ export type ChildMood = 'adore' | 'fiere' | 'rigolo' | 'fatiguee' | 'difficile';
 export interface AccountProfile {
   id: string;
   email: string;
-  password?: string; // Used only in local demo mode; Supabase uses auth.users
+  password?: string; // Optional when using Magic Link; Supabase uses auth.users
+  firstName: string;
+  lastName: string;
   fullName: string;
+  phoneCountryCode: string;
+  phoneNumber: string;
+  phoneE164?: string;
+  phoneVerified?: boolean;
+  authMethod?: 'password' | 'magic_link';
   role: UserRole;
-  clubName?: string;
+  clubId?: string; // Official verified club ID
+  clubName?: string; // Official or pending proposed club name
+  pendingClubProposalId?: string;
   coachCode?: string; // Unique individual code for coaches (e.g. COACH-CAM26)
   createdAt: string;
 }
@@ -70,12 +81,32 @@ export interface ClubInfo {
 export interface Club {
   id: string;
   name: string;
+  city?: string;
+  postalCode?: string;
+  fftCode?: string;
+  isOfficial?: boolean;
   coachName: string;
   coachPhone: string;
   coachEmail: string;
   schedule: string;
   courtSurface: string;
   address: string;
+}
+
+export interface ClubProposal {
+  id: string;
+  proposedName: string;
+  proposedCity: string;
+  proposedAddress?: string;
+  requestedByCoachId: string;
+  requestedByCoachName: string;
+  requestedByCoachEmail: string;
+  requestedByCoachPhone?: string;
+  status: ClubProposalStatus;
+  resolvedClubId?: string;
+  adminNote?: string;
+  createdAt: string;
+  resolvedAt?: string;
 }
 
 export interface StudioChallengeTemplate {
@@ -254,6 +285,7 @@ export interface FamilyState {
   accounts: AccountProfile[];
   coachLinks: CoachChildLink[];
   clubs: Club[];
+  clubProposals: ClubProposal[];
   studioChallenges: StudioChallengeTemplate[];
   studioRewards: StudioRewardTemplate[];
   children: ChildProfile[];

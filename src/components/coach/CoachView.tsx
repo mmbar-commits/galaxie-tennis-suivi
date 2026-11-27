@@ -160,9 +160,18 @@ export function CoachView({ onSwitchToChild }: CoachViewProps) {
                   Coach FFT
                 </span>
               </div>
-              <p className="text-xs text-emerald-200">
-                {currentUser?.clubName || 'Validation officielle des acquis TTCA'}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-200">
+                <span>
+                  {currentUser?.clubName
+                    ? `🏟️ ${currentUser.clubName}`
+                    : 'Validation officielle des acquis TTCA'}
+                </span>
+                {currentUser?.pendingClubProposalId && (
+                  <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10px] font-bold text-amber-200">
+                    ⏳ Club en attente de validation admin
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

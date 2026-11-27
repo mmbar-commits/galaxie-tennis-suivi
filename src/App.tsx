@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AdminView } from './components/admin/AdminView';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { ChildLayout } from './components/child/ChildLayout';
 import { CoachView } from './components/coach/CoachView';
@@ -30,7 +31,7 @@ function AppShell() {
   };
 
   const handleRequestExitChild = () => {
-    if (currentUser?.role === 'coach') {
+    if (currentUser?.role === 'coach' || currentUser?.role === 'admin') {
       setChildViewActive(false);
     } else {
       setShowPinModal(true);
@@ -48,6 +49,8 @@ function AppShell() {
         <ChildLayout onRequestParentMode={handleRequestExitChild} />
       ) : !currentUser ? (
         <LoginScreen onOpenChildDemo={() => handleSwitchToChild(false)} />
+      ) : currentUser.role === 'admin' ? (
+        <AdminView />
       ) : currentUser.role === 'coach' ? (
         <CoachView onSwitchToChild={() => handleSwitchToChild(false)} />
       ) : (

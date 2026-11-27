@@ -6,15 +6,56 @@
 
 create extension if not exists "pgcrypto";
 
--- 0. Profils utilisateurs (Parent ou Coach avec code unique individuel)
+-- 0. Profils utilisateurs (Parent, Coach avec code unique individuel, ou Admin Général)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
+  first_name text not null default '',
+  last_name text not null default '',
   full_name text not null,
-  role text not null check (role in ('parent', 'coach')),
+  phone_country_code text not null default '+33',
+  phone_number text not null default '',
+  phone_e164 text default '',
+  phone_verified boolean not null default false,
+  role text not null check (role in ('parent', 'coach', 'admin')),
+  club_id text,
   club_name text default '',
+  pending_club_proposal_id text,
   coach_code text unique,
   created_at timestamptz not null default now()
+);
+
+-- 0b. Référentiel officiel des clubs (géré par l'Administrateur Général)
+create table if not exists public.official_clubs (
+  id text primary key default gen_random_uuid()::text,
+  name text not null,
+  city text default '',
+  postal_code text default '',
+  fft_code text default '',
+  court_surface text default '',
+  address text default '',
+  schedule text default '',
+  coach_phone text default '',
+  coach_email text default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- 0c. Propositions de nouveaux clubs par les coachs (à valider par l'Admin Général)
+create table if not exists public.club_proposals (
+  id text primary key default gen_random_uuid()::text,
+  proposed_name text not null,
+  proposed_city text default '',
+  proposed_address text default '',
+  requested_by_coach_id uuid references auth.users(id) on delete cascade,
+  requested_by_coach_name text not null default '',
+  requested_by_coach_email text not null default '',
+  requested_by_coach_phone text default '',
+  status text not null default 'pending' check (status in ('pending', 'approved', 'merged', 'rejected')),
+  resolved_club_id text references public.official_clubs(id) on delete set null,
+  admin_note text,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
 );
 
 -- 1. Familles (1 famille par compte parent Supabase)
@@ -186,6 +227,8 @@ create table if not exists public.upcoming_events (
 -- ============================================================================
 
 alter table public.profiles enable row level security;
+alter table public.official_clubs enable row level security;
+alter table public.club_proposals enable row level security;
 alter table public.families enable row level security;
 alter table public.children enable row level security;
 alter table public.coach_child_links enable row level security;
@@ -197,6 +240,19 @@ alter table public.reward_redemptions enable row level security;
 alter table public.memories enable row level security;
 alter table public.quiz_attempts enable row level security;
 alter table public.upcoming_events enable row level security;
+
+-- Vérifie si l'utilisateur connecté est Administrateur Général
+create or replace function public.is_super_admin()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  );
+$$;
 
 -- Recherche sécurisée d'un coach par son code unique individuel
 create or replace function public.find_coach_by_code(code_input text)
@@ -244,9 +300,28 @@ as $$
   );
 $$;
 
--- Policies profiles
+-- Policies profiles (propre profil + lecture/gestion par Super Admin)
 create policy "profiles_own_all" on public.profiles
-  for all using (id = auth.uid()) with check (id = auth.uid());
+  for all using (id = auth.uid() or public.is_super_admin())
+  with check (id = auth.uid() or public.is_super_admin());
+
+-- Policies official_clubs (lecture publique pour la liste d'inscription coach, écriture Super Admin)
+create policy "official_clubs_public_read" on public.official_clubs
+  for select using (true);
+
+create policy "official_clubs_admin_write" on public.official_clubs
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
+
+-- Policies club_proposals (le coach crée & voit sa demande, le Super Admin modère tout)
+create policy "club_proposals_coach_insert" on public.club_proposals
+  for insert to authenticated
+  with check (requested_by_coach_id = auth.uid());
+
+create policy "club_proposals_coach_or_admin_select" on public.club_proposals
+  for select using (requested_by_coach_id = auth.uid() or public.is_super_admin());
+
+create policy "club_proposals_admin_update_delete" on public.club_proposals
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 
 -- Policies families
 create policy "families_owner_all" on public.families

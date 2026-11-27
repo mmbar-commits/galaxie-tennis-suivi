@@ -12,6 +12,11 @@ import {
 } from '../data/galaxieCatalog';
 import type { InitialAssessmentResult } from '../data/initialAssessment';
 import {
+  formatPhoneDisplay,
+  isValidPhoneInput,
+  normalizePhoneE164,
+} from '../data/phoneCountries';
+import {
   getSupabaseClient,
   getSupabaseConfig,
   saveRuntimeSupabaseConfig,
@@ -28,6 +33,7 @@ import type {
   ChildTheme,
   Club,
   ClubInfo,
+  ClubProposal,
   CoachChildLink,
   EquipmentInfo,
   FamilyState,
@@ -47,6 +53,7 @@ import type {
 } from '../types/tennis';
 
 const LOCAL_STORAGE_KEY = 'galaxie_tennis_family_state_v1';
+const DEMO_MAGIC_LINKS_KEY = 'galaxie_tennis_demo_magic_links_v1';
 
 function uid(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -147,10 +154,54 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
   });
 
   const demoDefaults = createInitialDemoState();
-  const accounts =
+  clubs = clubs.map((cl) => ({
+    ...cl,
+    isOfficial: cl.isOfficial !== false,
+  }));
+
+  const rawAccounts =
     Array.isArray(raw.accounts) && raw.accounts.length > 0
       ? raw.accounts
       : demoDefaults.accounts;
+
+  let accounts: AccountProfile[] = rawAccounts.map((acc) => {
+    const parts = (acc.fullName || '').trim().split(/\s+/).filter(Boolean);
+    const firstName = acc.firstName?.trim() || parts[0] || 'Utilisateur';
+    const lastName = acc.lastName?.trim() || parts.slice(1).join(' ') || '';
+    const fullName = acc.fullName?.trim() || [firstName, lastName].filter(Boolean).join(' ');
+    const phoneCountryCode = acc.phoneCountryCode || '+33';
+    const phoneNumber = acc.phoneNumber || '';
+    const phoneE164 =
+      acc.phoneE164 || (phoneNumber ? normalizePhoneE164(phoneCountryCode, phoneNumber) : undefined);
+    return {
+      ...acc,
+      firstName,
+      lastName,
+      fullName,
+      phoneCountryCode,
+      phoneNumber,
+      phoneE164,
+    };
+  });
+
+  // Ensure an Admin Général account exists even for users migrating from an older localStorage state
+  const hadAdmin = accounts.some((a) => a.role === 'admin');
+  if (!hadAdmin) {
+    const demoAdmin = demoDefaults.accounts.find((a) => a.role === 'admin');
+    if (demoAdmin) {
+      accounts = [demoAdmin, ...accounts];
+    }
+  }
+
+  let clubProposals: ClubProposal[] = Array.isArray(raw.clubProposals) ? raw.clubProposals : [];
+  if (!Array.isArray(raw.clubProposals) && !hadAdmin) {
+    // Seed the sample pending proposal & coach if upgrading from a pre-admin local state
+    const pendingCoach = demoDefaults.accounts.find((a) => a.id === 'coach-pending-demo');
+    if (pendingCoach && !accounts.some((a) => a.id === pendingCoach.id)) {
+      accounts = [...accounts, pendingCoach];
+    }
+    clubProposals = demoDefaults.clubProposals;
+  }
 
   const coachLinks = Array.isArray(raw.coachLinks) ? raw.coachLinks : demoDefaults.coachLinks;
 
@@ -171,6 +222,7 @@ function normalizeFamilyState(raw: FamilyState): FamilyState {
     accounts,
     coachLinks,
     clubs,
+    clubProposals,
     studioChallenges,
     studioRewards,
     children,
@@ -201,6 +253,8 @@ interface TennisStoreContextValue {
   hasVisibleChildren: boolean;
   activeChild: ChildProfile;
   activeChildClub: Club | null;
+  officialClubs: Club[];
+  pendingClubProposals: ClubProposal[];
   childSessions: TrainingSession[];
   childChallenges: Challenge[];
   childTournaments: TournamentEntry[];
@@ -214,20 +268,57 @@ interface TennisStoreContextValue {
   pendingApprovalCount: number;
   todayQuizStarsEarned: number;
 
-  // User accounts (Parent & Coach login + registration)
+  // User accounts (Parent, Coach & Admin login + registration + Magic Link)
   registerAccount: (input: {
     email: string;
-    password: string;
-    fullName: string;
-    role: UserRole;
-    clubName?: string;
-  }) => Promise<{ ok: boolean; error?: string; account?: AccountProfile }>;
+    password?: string;
+    useMagicLink?: boolean;
+    firstName: string;
+    lastName: string;
+    phoneCountryCode: string;
+    phoneNumber: string;
+    role: 'parent' | 'coach';
+    clubId?: string;
+    proposedClubName?: string;
+    proposedClubCity?: string;
+    proposedClubAddress?: string;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    account?: AccountProfile;
+    magicLinkSent?: boolean;
+    demoMagicLink?: string;
+    demoMagicToken?: string;
+  }>;
   loginAccount: (
     email: string,
     password: string,
   ) => Promise<{ ok: boolean; error?: string; account?: AccountProfile }>;
+  sendMagicLink: (email: string) => Promise<{
+    ok: boolean;
+    error?: string;
+    mode?: 'supabase' | 'local';
+    message?: string;
+    demoMagicLink?: string;
+    demoMagicToken?: string;
+    accountName?: string;
+  }>;
+  verifyDemoMagicLink: (token: string) => { ok: boolean; error?: string; account?: AccountProfile };
   quickDemoLogin: (role: UserRole) => void;
   logoutAccount: () => Promise<void>;
+
+  // Super Admin moderation of Coach club proposals
+  approveClubProposal: (
+    proposalId: string,
+    clubData: Omit<Club, 'id'>,
+    adminNote?: string,
+  ) => Club | null;
+  mergeClubProposalToExisting: (
+    proposalId: string,
+    existingClubId: string,
+    adminNote?: string,
+  ) => void;
+  rejectClubProposal: (proposalId: string, adminNote?: string) => void;
 
   // Coach <-> Child assignment via unique individual coach code
   requestCoachAssignment: (
@@ -596,6 +687,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
                 }))
               : prev.coachLinks,
           clubs: Array.isArray(familyRow.clubs) ? familyRow.clubs : prev.clubs,
+          clubProposals: prev.clubProposals,
           studioChallenges: Array.isArray(familyRow.studio_challenges)
             ? familyRow.studio_challenges
             : prev.studioChallenges,
@@ -807,7 +899,7 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
   }, [state.accounts, state.currentUserId]);
 
   const visibleChildren = useMemo(() => {
-    if (!currentUser) return state.children;
+    if (!currentUser || currentUser.role === 'admin') return state.children;
     if (currentUser.role === 'parent') {
       return state.children.filter((c) => c.parentId === currentUser.id);
     }
@@ -833,6 +925,20 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     if (!activeChild?.clubId) return null;
     return state.clubs.find((c) => c.id === activeChild.clubId) ?? null;
   }, [state.clubs, activeChild?.clubId]);
+
+  const officialClubs = useMemo(
+    () =>
+      state.clubs
+        .filter((c) => c.isOfficial !== false)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr')),
+    [state.clubs],
+  );
+
+  const pendingClubProposals = useMemo(
+    () => state.clubProposals.filter((p) => p.status === 'pending'),
+    [state.clubProposals],
+  );
 
   const childCoachLinks = useMemo(
     () =>
@@ -1238,68 +1344,291 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     return created.length;
   };
 
-  // Local + Supabase Account Management (Parent & Coach)
+  // Local Magic Link token helpers (used when Supabase SMTP is not yet configured)
+  const createLocalMagicLink = useCallback((accountId: string, email: string) => {
+    const token = `ml_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    try {
+      const existingRaw = localStorage.getItem(DEMO_MAGIC_LINKS_KEY);
+      const map: Record<string, { accountId: string; email: string; expiresAt: number }> =
+        existingRaw ? JSON.parse(existingRaw) : {};
+      map[token] = {
+        accountId,
+        email,
+        expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes
+      };
+      localStorage.setItem(DEMO_MAGIC_LINKS_KEY, JSON.stringify(map));
+    } catch {
+      // Ignore storage errors
+    }
+    const demoMagicLink = `${window.location.origin}${window.location.pathname}?magic_token=${token}`;
+    return { token, demoMagicLink };
+  }, []);
+
+  const verifyDemoMagicLink = useCallback(
+    (token: string): { ok: boolean; error?: string; account?: AccountProfile } => {
+      try {
+        const existingRaw = localStorage.getItem(DEMO_MAGIC_LINKS_KEY);
+        const map: Record<string, { accountId: string; email: string; expiresAt: number }> =
+          existingRaw ? JSON.parse(existingRaw) : {};
+        const entry = map[token];
+        if (!entry) {
+          return { ok: false, error: 'Lien magique invalide ou déjà utilisé.' };
+        }
+        if (Date.now() > entry.expiresAt) {
+          delete map[token];
+          localStorage.setItem(DEMO_MAGIC_LINKS_KEY, JSON.stringify(map));
+          return { ok: false, error: 'Ce lien magique a expiré. Demande un nouveau lien.' };
+        }
+        const account = state.accounts.find(
+          (a) => a.id === entry.accountId || a.email.toLowerCase() === entry.email.toLowerCase(),
+        );
+        if (!account) {
+          return { ok: false, error: 'Compte introuvable pour ce lien magique.' };
+        }
+        delete map[token];
+        localStorage.setItem(DEMO_MAGIC_LINKS_KEY, JSON.stringify(map));
+        setState((prev) => ({ ...prev, currentUserId: account.id }));
+        return { ok: true, account };
+      } catch {
+        return { ok: false, error: 'Impossible de vérifier ce lien magique.' };
+      }
+    },
+    [state.accounts],
+  );
+
+  // Auto-consume ?magic_token=... when opening a demo Magic Link URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('magic_token');
+    if (!token) return;
+    const res = verifyDemoMagicLink(token);
+    if (res.ok) {
+      params.delete('magic_token');
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+      window.history.replaceState({}, '', nextUrl);
+    }
+  }, [verifyDemoMagicLink]);
+
+  // Local + Supabase Account Management (Parent, Coach & Admin)
   const registerAccount = async (input: {
     email: string;
-    password: string;
-    fullName: string;
-    role: UserRole;
-    clubName?: string;
-  }): Promise<{ ok: boolean; error?: string; account?: AccountProfile }> => {
+    password?: string;
+    useMagicLink?: boolean;
+    firstName: string;
+    lastName: string;
+    phoneCountryCode: string;
+    phoneNumber: string;
+    role: 'parent' | 'coach';
+    clubId?: string;
+    proposedClubName?: string;
+    proposedClubCity?: string;
+    proposedClubAddress?: string;
+  }): Promise<{
+    ok: boolean;
+    error?: string;
+    account?: AccountProfile;
+    magicLinkSent?: boolean;
+    demoMagicLink?: string;
+    demoMagicToken?: string;
+  }> => {
     const emailNorm = input.email.trim().toLowerCase();
-    if (!emailNorm || !input.fullName.trim() || input.password.length < 6) {
-      return { ok: false, error: 'Nom, email et mot de passe (6 car. min.) requis.' };
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const phoneCountryCode = input.phoneCountryCode || '+33';
+    const phoneNumber = input.phoneNumber.trim();
+
+    if (!firstName || !lastName) {
+      return { ok: false, error: 'Merci de renseigner votre prénom et votre nom séparément.' };
     }
-    const existing = state.accounts.find((a) => a.email.toLowerCase() === emailNorm);
-    if (existing) {
-      return { ok: false, error: 'Un compte existe déjà avec cet email.' };
+    if (!emailNorm || !emailNorm.includes('@')) {
+      return { ok: false, error: 'Merci de renseigner une adresse e-mail valide.' };
+    }
+    if (!isValidPhoneInput(phoneNumber)) {
+      return {
+        ok: false,
+        error: 'Merci de renseigner un numéro de téléphone valide avec son indicatif pays.',
+      };
+    }
+    if (!input.useMagicLink && (!input.password || input.password.length < 6)) {
+      return {
+        ok: false,
+        error: 'Mot de passe requis (6 caractères min.), ou activez la connexion par lien magique.',
+      };
     }
 
+    const existing = state.accounts.find((a) => a.email.toLowerCase() === emailNorm);
+    if (existing) {
+      return { ok: false, error: 'Un compte existe déjà avec cet e-mail.' };
+    }
+
+    let resolvedClubId: string | undefined;
+    let resolvedClubName: string | undefined;
+    let pendingProposal: ClubProposal | null = null;
+
+    if (input.role === 'coach') {
+      if (input.clubId && input.clubId !== '__other__') {
+        const club = state.clubs.find((c) => c.id === input.clubId);
+        if (!club) {
+          return { ok: false, error: 'Club sélectionné introuvable.' };
+        }
+        resolvedClubId = club.id;
+        resolvedClubName = club.name;
+      } else if (input.proposedClubName?.trim()) {
+        resolvedClubName = input.proposedClubName.trim();
+      } else {
+        return {
+          ok: false,
+          error:
+            'Merci de choisir votre club dans la liste, ou de saisir le nom de votre club pour validation.',
+        };
+      }
+    }
+
+    const phoneE164 = normalizePhoneE164(phoneCountryCode, phoneNumber);
     const coachCode =
       input.role === 'coach'
         ? generateUniqueCoachCode(
-            input.fullName,
+            `${firstName}${lastName}`,
             state.accounts.map((a) => a.coachCode || '').filter(Boolean),
           )
         : undefined;
 
     let accountId = uid(input.role);
+    const now = new Date().toISOString();
+
+    if (input.role === 'coach' && !resolvedClubId && input.proposedClubName?.trim()) {
+      pendingProposal = {
+        id: uid('prop'),
+        proposedName: input.proposedClubName.trim(),
+        proposedCity: input.proposedClubCity?.trim() || '',
+        proposedAddress: input.proposedClubAddress?.trim() || '',
+        requestedByCoachId: accountId,
+        requestedByCoachName: fullName,
+        requestedByCoachEmail: emailNorm,
+        requestedByCoachPhone: formatPhoneDisplay(phoneCountryCode, phoneNumber),
+        status: 'pending',
+        createdAt: now,
+      };
+    }
+
     const sb = getSupabaseClient();
     if (sb) {
-      const { data, error } = await sb.auth.signUp({
-        email: emailNorm,
-        password: input.password,
-      });
-      if (error) {
-        return { ok: false, error: error.message };
-      }
-      if (data.user) {
-        accountId = data.user.id;
-        await sb.from('profiles').upsert({
-          id: accountId,
+      if (input.useMagicLink) {
+        const { error } = await sb.auth.signInWithOtp({
           email: emailNorm,
-          full_name: input.fullName.trim(),
-          role: input.role,
-          club_name: input.clubName?.trim() || '',
-          coach_code: coachCode ?? null,
+          options: {
+            emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+            data: {
+              first_name: firstName,
+              last_name: lastName,
+              full_name: fullName,
+              phone_country_code: phoneCountryCode,
+              phone_number: phoneNumber,
+              phone_e164: phoneE164,
+              role: input.role,
+              club_id: resolvedClubId ?? null,
+              club_name: resolvedClubName ?? '',
+              coach_code: coachCode ?? null,
+            },
+          },
         });
+        if (error) {
+          return { ok: false, error: error.message };
+        }
+      } else {
+        const { data, error } = await sb.auth.signUp({
+          email: emailNorm,
+          password: input.password || '',
+        });
+        if (error) {
+          return { ok: false, error: error.message };
+        }
+        if (data.user) {
+          accountId = data.user.id;
+          if (pendingProposal) {
+            pendingProposal = { ...pendingProposal, requestedByCoachId: accountId };
+          }
+          await sb.from('profiles').upsert({
+            id: accountId,
+            email: emailNorm,
+            first_name: firstName,
+            last_name: lastName,
+            full_name: fullName,
+            phone_country_code: phoneCountryCode,
+            phone_number: phoneNumber,
+            phone_e164: phoneE164,
+            role: input.role,
+            club_id: resolvedClubId ?? null,
+            club_name: resolvedClubName ?? '',
+            pending_club_proposal_id: pendingProposal?.id ?? null,
+            coach_code: coachCode ?? null,
+          });
+          if (pendingProposal) {
+            await sb.from('club_proposals').insert({
+              id: pendingProposal.id,
+              proposed_name: pendingProposal.proposedName,
+              proposed_city: pendingProposal.proposedCity,
+              proposed_address: pendingProposal.proposedAddress ?? '',
+              requested_by_coach_id: pendingProposal.requestedByCoachId,
+              requested_by_coach_name: pendingProposal.requestedByCoachName,
+              requested_by_coach_email: pendingProposal.requestedByCoachEmail,
+              requested_by_coach_phone: pendingProposal.requestedByCoachPhone ?? '',
+              status: 'pending',
+            });
+          }
+        }
       }
     }
 
     const newAccount: AccountProfile = {
       id: accountId,
       email: emailNorm,
-      password: input.password,
-      fullName: input.fullName.trim(),
+      password: input.useMagicLink ? undefined : input.password,
+      firstName,
+      lastName,
+      fullName,
+      phoneCountryCode,
+      phoneNumber,
+      phoneE164,
+      phoneVerified: false,
+      authMethod: input.useMagicLink ? 'magic_link' : 'password',
       role: input.role,
-      clubName: input.clubName?.trim() || undefined,
+      clubId: resolvedClubId,
+      clubName: resolvedClubName,
+      pendingClubProposalId: pendingProposal?.id,
       coachCode,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
+
+    if (input.useMagicLink) {
+      setState((prev) => ({
+        ...prev,
+        accounts: [...prev.accounts, newAccount],
+        clubProposals: pendingProposal
+          ? [pendingProposal, ...prev.clubProposals]
+          : prev.clubProposals,
+      }));
+      if (sb) {
+        return { ok: true, account: newAccount, magicLinkSent: true };
+      }
+      const { token, demoMagicLink } = createLocalMagicLink(newAccount.id, newAccount.email);
+      return {
+        ok: true,
+        account: newAccount,
+        magicLinkSent: true,
+        demoMagicLink,
+        demoMagicToken: token,
+      };
+    }
 
     setState((prev) => ({
       ...prev,
       accounts: [...prev.accounts, newAccount],
+      clubProposals: pendingProposal
+        ? [pendingProposal, ...prev.clubProposals]
+        : prev.clubProposals,
       currentUserId: newAccount.id,
     }));
 
@@ -1321,12 +1650,21 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
           .eq('id', data.user.id)
           .maybeSingle();
         if (prof) {
+          const parts = (prof.full_name || '').trim().split(/\s+/).filter(Boolean);
           const acc: AccountProfile = {
             id: prof.id,
             email: prof.email,
+            firstName: prof.first_name || parts[0] || '',
+            lastName: prof.last_name || parts.slice(1).join(' ') || '',
             fullName: prof.full_name,
+            phoneCountryCode: prof.phone_country_code || '+33',
+            phoneNumber: prof.phone_number || '',
+            phoneE164: prof.phone_e164 || undefined,
+            phoneVerified: Boolean(prof.phone_verified),
             role: prof.role as UserRole,
+            clubId: prof.club_id || undefined,
             clubName: prof.club_name || undefined,
+            pendingClubProposalId: prof.pending_club_proposal_id || undefined,
             coachCode: prof.coach_code || undefined,
             createdAt: prof.created_at,
           };
@@ -1342,20 +1680,86 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       }
     }
 
+    const accountByEmail = state.accounts.find((a) => a.email.toLowerCase() === emailNorm);
+    if (accountByEmail && !accountByEmail.password) {
+      return {
+        ok: false,
+        error:
+          'Ce compte utilise la connexion sans mot de passe. Cliquez sur « Lien magique » ci-dessus pour vous connecter.',
+      };
+    }
+
     const found = state.accounts.find(
       (a) => a.email.toLowerCase() === emailNorm && a.password === password,
     );
     if (!found) {
-      return { ok: false, error: 'Email ou mot de passe incorrect.' };
+      return { ok: false, error: 'E-mail ou mot de passe incorrect.' };
     }
     setState((prev) => ({ ...prev, currentUserId: found.id }));
     return { ok: true, account: found };
   };
 
+  const sendMagicLink = async (
+    email: string,
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    mode?: 'supabase' | 'local';
+    message?: string;
+    demoMagicLink?: string;
+    demoMagicToken?: string;
+    accountName?: string;
+  }> => {
+    const emailNorm = email.trim().toLowerCase();
+    if (!emailNorm || !emailNorm.includes('@')) {
+      return { ok: false, error: 'Merci de saisir une adresse e-mail valide.' };
+    }
+
+    const sb = getSupabaseClient();
+    if (sb) {
+      const { error } = await sb.auth.signInWithOtp({
+        email: emailNorm,
+        options: {
+          emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      return {
+        ok: true,
+        mode: 'supabase',
+        message: `Lien magique envoyé à ${emailNorm} ! Ouvrez votre boîte mail et cliquez sur le lien pour vous connecter sans mot de passe.`,
+      };
+    }
+
+    const found = state.accounts.find((a) => a.email.toLowerCase() === emailNorm);
+    if (!found) {
+      return {
+        ok: false,
+        error: `Aucun compte trouvé pour « ${emailNorm} ». Créez d’abord un compte dans l’onglet Inscription.`,
+      };
+    }
+
+    const { token, demoMagicLink } = createLocalMagicLink(found.id, found.email);
+    return {
+      ok: true,
+      mode: 'local',
+      message: `Lien magique généré pour ${found.fullName} (${found.email}).`,
+      demoMagicLink,
+      demoMagicToken: token,
+      accountName: found.fullName,
+    };
+  };
+
   const quickDemoLogin = (role: UserRole) => {
-    const target = state.accounts.find((a) => a.role === role);
-    if (target) {
-      setState((prev) => ({ ...prev, currentUserId: target.id }));
+    const preferred =
+      role === 'coach'
+        ? state.accounts.find((a) => a.id === 'coach-demo-1') ||
+          state.accounts.find((a) => a.role === 'coach')
+        : state.accounts.find((a) => a.role === role);
+    if (preferred) {
+      setState((prev) => ({ ...prev, currentUserId: preferred.id }));
     }
   };
 
@@ -1367,6 +1771,184 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       setSyncStatus('local');
     }
     setState((prev) => ({ ...prev, currentUserId: null }));
+  };
+
+  // Super Admin Club Proposals Moderation
+  const approveClubProposal = (
+    proposalId: string,
+    clubData: Omit<Club, 'id'>,
+    adminNote?: string,
+  ): Club | null => {
+    const proposal = state.clubProposals.find((p) => p.id === proposalId);
+    if (!proposal) return null;
+
+    const newClub: Club = {
+      ...clubData,
+      id: uid('club'),
+      isOfficial: true,
+    };
+    const now = new Date().toISOString();
+
+    setState((prev) => {
+      const nextClubs = [...prev.clubs, newClub];
+      const nextProposals = prev.clubProposals.map((p) =>
+        p.id === proposalId
+          ? {
+              ...p,
+              status: 'approved' as const,
+              resolvedClubId: newClub.id,
+              adminNote: adminNote?.trim() || undefined,
+              resolvedAt: now,
+            }
+          : p,
+      );
+      const nextAccounts = prev.accounts.map((acc) =>
+        acc.id === proposal.requestedByCoachId || acc.pendingClubProposalId === proposalId
+          ? {
+              ...acc,
+              clubId: newClub.id,
+              clubName: newClub.name,
+              pendingClubProposalId: undefined,
+            }
+          : acc,
+      );
+      syncFamilyJsonb({ clubs: nextClubs });
+      return {
+        ...prev,
+        clubs: nextClubs,
+        clubProposals: nextProposals,
+        accounts: nextAccounts,
+      };
+    });
+
+    void syncCloudOp(async (sb) => {
+      await sb.from('official_clubs').insert({
+        id: newClub.id,
+        name: newClub.name,
+        city: newClub.city ?? '',
+        postal_code: newClub.postalCode ?? '',
+        fft_code: newClub.fftCode ?? '',
+        court_surface: newClub.courtSurface,
+        address: newClub.address,
+        schedule: newClub.schedule,
+        coach_phone: newClub.coachPhone,
+        coach_email: newClub.coachEmail,
+      });
+      await sb
+        .from('club_proposals')
+        .update({
+          status: 'approved',
+          resolved_club_id: newClub.id,
+          admin_note: adminNote?.trim() || null,
+          resolved_at: now,
+        })
+        .eq('id', proposalId);
+      await sb
+        .from('profiles')
+        .update({
+          club_id: newClub.id,
+          club_name: newClub.name,
+          pending_club_proposal_id: null,
+        })
+        .eq('id', proposal.requestedByCoachId);
+    });
+
+    return newClub;
+  };
+
+  const mergeClubProposalToExisting = (
+    proposalId: string,
+    existingClubId: string,
+    adminNote?: string,
+  ) => {
+    const proposal = state.clubProposals.find((p) => p.id === proposalId);
+    const club = state.clubs.find((c) => c.id === existingClubId);
+    if (!proposal || !club) return;
+
+    const now = new Date().toISOString();
+    setState((prev) => ({
+      ...prev,
+      clubProposals: prev.clubProposals.map((p) =>
+        p.id === proposalId
+          ? {
+              ...p,
+              status: 'merged' as const,
+              resolvedClubId: club.id,
+              adminNote: adminNote?.trim() || `Rattaché à ${club.name}`,
+              resolvedAt: now,
+            }
+          : p,
+      ),
+      accounts: prev.accounts.map((acc) =>
+        acc.id === proposal.requestedByCoachId || acc.pendingClubProposalId === proposalId
+          ? {
+              ...acc,
+              clubId: club.id,
+              clubName: club.name,
+              pendingClubProposalId: undefined,
+            }
+          : acc,
+      ),
+    }));
+
+    void syncCloudOp(async (sb) => {
+      await sb
+        .from('club_proposals')
+        .update({
+          status: 'merged',
+          resolved_club_id: club.id,
+          admin_note: adminNote?.trim() || `Rattaché à ${club.name}`,
+          resolved_at: now,
+        })
+        .eq('id', proposalId);
+      await sb
+        .from('profiles')
+        .update({
+          club_id: club.id,
+          club_name: club.name,
+          pending_club_proposal_id: null,
+        })
+        .eq('id', proposal.requestedByCoachId);
+    });
+  };
+
+  const rejectClubProposal = (proposalId: string, adminNote?: string) => {
+    const proposal = state.clubProposals.find((p) => p.id === proposalId);
+    if (!proposal) return;
+    const now = new Date().toISOString();
+
+    setState((prev) => ({
+      ...prev,
+      clubProposals: prev.clubProposals.map((p) =>
+        p.id === proposalId
+          ? {
+              ...p,
+              status: 'rejected' as const,
+              adminNote: adminNote?.trim() || undefined,
+              resolvedAt: now,
+            }
+          : p,
+      ),
+      accounts: prev.accounts.map((acc) =>
+        acc.id === proposal.requestedByCoachId || acc.pendingClubProposalId === proposalId
+          ? {
+              ...acc,
+              pendingClubProposalId: undefined,
+            }
+          : acc,
+      ),
+    }));
+
+    void syncCloudOp(async (sb) => {
+      await sb
+        .from('club_proposals')
+        .update({
+          status: 'rejected',
+          admin_note: adminNote?.trim() || null,
+          resolved_at: now,
+        })
+        .eq('id', proposalId);
+    });
   };
 
   // Coach <-> Child assignment via Coach's unique individual code
@@ -1389,10 +1971,15 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
       const { data } = await sb.rpc('find_coach_by_code', { code_input: code });
       const row = Array.isArray(data) ? data[0] : data;
       if (row) {
+        const parts = (row.full_name || '').trim().split(/\s+/).filter(Boolean);
         coachAccount = {
           id: row.id,
           email: '',
+          firstName: parts[0] || '',
+          lastName: parts.slice(1).join(' ') || '',
           fullName: row.full_name,
+          phoneCountryCode: '+33',
+          phoneNumber: '',
           role: 'coach',
           clubName: row.club_name || undefined,
           coachCode: row.coach_code,
@@ -2273,6 +2860,8 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     hasVisibleChildren,
     activeChild,
     activeChildClub,
+    officialClubs,
+    pendingClubProposals,
     childSessions,
     childChallenges,
     childTournaments,
@@ -2287,8 +2876,13 @@ export function TennisStoreProvider({ children: reactChildren }: { children: Rea
     todayQuizStarsEarned,
     registerAccount,
     loginAccount,
+    sendMagicLink,
+    verifyDemoMagicLink,
     quickDemoLogin,
     logoutAccount,
+    approveClubProposal,
+    mergeClubProposalToExisting,
+    rejectClubProposal,
     requestCoachAssignment,
     respondToCoachLink,
     removeCoachLink,
